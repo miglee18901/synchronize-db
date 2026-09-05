@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN" monitorInterval="10" shutdownHook="disable">
+    <Properties>
+        <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %c{1.}:%L - %msg%n</Property>
+        <Property name="BASE_LOG_DIR">logs</Property>
+        <Property name="BASE_COMPRESS_LOG_DIR">logs/compressedLogs</Property>
+        <Property name="MAX_FILE_INTRA_DAY">3</Property>
+        <Property name="TRIGGER_SIZE">20 MB</Property>
+    </Properties>
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+        </Console>
+
+        <RollingFile name="Process" fileName="${BASE_LOG_DIR}/process.log"
+                     filePattern="${BASE_COMPRESS_LOG_DIR}/process-$${date:yyyy-MM-dd}/process-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout>
+                <Pattern>${LOG_PATTERN}</Pattern>
+            </PatternLayout>
+            <Policies>
+                <SizeBasedTriggeringPolicy size="${TRIGGER_SIZE}"/>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+            </Policies>
+            <DefaultRolloverStrategy max="${MAX_FILE_INTRA_DAY}"/>
+        </RollingFile>
+    </Appenders>
+
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="Console"/>
+        </Root>
+        <Logger name="org.example" level="debug" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="Process"/>
+        </Logger>
+        <Logger name="org.hibernate" level="warn"/>
+    </Loggers>
+</Configuration>

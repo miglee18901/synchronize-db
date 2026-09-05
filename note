@@ -1,0 +1,45 @@
+Xây dung tool đồng bộ DB từ môi trường 21M về 16M
+
+Cấu hình:
+    2 file hibernate_oracle.cfg.xml cấu hình DB 2 hệ thống CRBT16M và CRBT21M
+    1 file config tên là config.properties:
+        - CRONJOB: cronjob chạy tool, VD: 0 0/5 * * * ? (mỗi 5 phút chạy 1 lần)
+        - BATCH_SIZE: 1000
+        - PATH_STATISTICS_FILE: export kết quả chạy
+    1 file lưu offset, ten là offset.txt, chứa 1 dòng và một giá trị số lưu offset của bảng RBT_LOG trên môi trường 21M, format:
+        OFFSET
+    1 file cấu hình log, sử dung log4j2
+
+Luồng:
+    Đọc file cấu hình
+    Kết nối CSDL tạo 2 instance hibernate
+    Đọc file offset.txt lấy offset của bảng, nếu không có offset (ở đây hiểu là ID của bảng đó) thì mặc định là 0
+    Lấy dữ liệu từ bảng RBT_LOG theo offset, mỗi lần lấy BATCH_SIZE với điều kiện
+        bắt đầu tăng dần từ offset là ID lớn nhất của lần lấy trước đó, nếu lần đầu tiên thì offset là 0
+        RESULT = 1
+    Tại dữ liệu bảng RBT_LOG, lấy thông tin ID, TONE_CODE, ACTION_TYPE
+    Kiểm tra giá trị của ACTION_TYPE:
+        nếu là 3
+            Kiểm tra giá trị của TONE_CODE đã tồn tại ở bảng MAP_CP_RBT trên môi trường 16M không?
+                Nếu không tồn tại
+                    Kiểm tra giá trị của TONE_CODE đã tồn tại ở bảng MAP_CP_RBT trên môi trường 21M không?
+                        Nếu không tồn tại thì ghi ra file lỗi
+                        Nếu tồn tại thì thực hiện insert dữ liệu vào bảng MAP_CP_RBT trên môi trường 16M từ bảng MAP_CP_RBT theo TONE_CODE trên môi trường 21M
+                Nếu đã tồn tại thì bỏ qua
+        Nếu là 1
+            Kiểm tra giá trị của TONE_CODE đã tồn tại ở bảng MAP_CP_RBT trên môi trường 16M không?
+                Nếu không tồn tại
+                    Kiểm tra giá trị của TONE_CODE đã tồn tại ở bảng MAP_CP_RBT trên môi trường 21M không?
+                        Nếu không tồn tại thì báo lỗi và ghi ra file lỗi
+                        Nếu tồn tại thì thực hiện insert dữ liệu vào bảng MAP_CP_RBT trên môi trường 16M từ bảng MAP_CP_RBT theo TONE_CODE trên môi trường 21M
+                            Nếu insert thành công thì thực hiện tương tự các bước với bảng TONELIST
+                            Nếu insert không thành công thì ghi ra file lỗi
+                Nếu đã tồn tại thì bỏ qua
+        Nếu là giá trị khác thì bỏ qua
+    Sau khi đã duyệt hết các bản ghi thì thực hiện update offset trong file offset.txt
+
+Có xử lý trường hợp 1 lần chạy của cronjob chỉ hoạt động 1 luồng, tránh trường hợp chưa chạy xong luồng mà cronjob chạy tiếp
+Thực hiện tạo dữ liệu test trong DB
+Sử dụng lại các file connect sql và log4j2.xml trong etc
+kiểm tra lại luồng tại thư mục sync đã được thực hiện đúng chưa, nếu chưa thì sửa lại
+Xóa các file code và tài nguyên không cần thiết
