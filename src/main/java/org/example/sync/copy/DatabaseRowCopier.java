@@ -1,26 +1,17 @@
-package org.example.sync;
+package org.example.sync.copy;
 
 import org.hibernate.Session;
 
 import java.sql.Connection;
-import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
-/**
- * JDBC-only copier, deliberately compatible with Hibernate 3.1.3.
- */
-final class DatabaseRowCopier {
-    boolean exists(Session session, String table, String toneCode) throws SQLException {
+public final class DatabaseRowCopier {
+    public boolean exists(Session session, String table, String toneCode) throws SQLException {
         Connection connection = session.connection();
-        String sql = "SELECT 1 FROM " + quotedTable(connection, table) + " WHERE "
-                + quoted(connection, "TONE_CODE") + " = ?";
+        String sql = "SELECT 1 FROM " + quotedTable(connection, table) + " WHERE " + quoted(connection, "TONE_CODE") + " = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, toneCode);
             try (ResultSet result = statement.executeQuery()) {
@@ -29,31 +20,17 @@ final class DatabaseRowCopier {
         }
     }
 
-    /**
-     * Copies precisely one row identified by TONE_CODE. Returns false when no source row exists.
-     */
-    boolean copyByToneCode(Session source, Session destination, String table, String toneCode) throws SQLException {
+    public boolean copyByToneCode(Session source, Session destination, SchemaCopyPlan.TableCopyPlan plan, String toneCode) throws SQLException {
         Connection sourceConnection = source.connection();
         Connection destinationConnection = destination.connection();
-        String select = "SELECT * FROM " + quotedTable(sourceConnection, table) + " WHERE "
-                + quoted(sourceConnection, "TONE_CODE") + " = ?";
+        String table = plan.getTable();
+        List<String> copyColumns = plan.getColumns();
+        String select = "SELECT * FROM " + quotedTable(sourceConnection, table) + " WHERE " + quoted(sourceConnection, "TONE_CODE") + " = ?";
         try (PreparedStatement selectStatement = sourceConnection.prepareStatement(select)) {
             selectStatement.setString(1, toneCode);
             try (ResultSet sourceRow = selectStatement.executeQuery()) {
                 if (!sourceRow.next()) {
                     return false;
-                }
-                ResultSetMetaData sourceMetadata = sourceRow.getMetaData();
-                Set<String> destinationColumns = columns(destinationConnection, table);
-                List<String> copyColumns = new ArrayList<String>();
-                for (int index = 1; index <= sourceMetadata.getColumnCount(); index++) {
-                    String column = sourceMetadata.getColumnLabel(index);
-                    if (destinationColumns.contains(column.toUpperCase())) {
-                        copyColumns.add(column);
-                    }
-                }
-                if (copyColumns.isEmpty()) {
-                    throw new SQLException("No common columns available for " + table);
                 }
                 StringBuilder insert = new StringBuilder("INSERT INTO ").append(quotedTable(destinationConnection, table)).append(" (");
                 StringBuilder values = new StringBuilder(" VALUES (");
@@ -77,24 +54,6 @@ final class DatabaseRowCopier {
                 return true;
             }
         }
-    }
-
-    private Set<String> columns(Connection connection, String table) throws SQLException {
-        Set<String> columns = new HashSet<String>();
-        DatabaseMetaData metadata = connection.getMetaData();
-        try (ResultSet result = metadata.getColumns(connection.getCatalog(), null, table, null)) {
-            while (result.next()) {
-                columns.add(result.getString("COLUMN_NAME").toUpperCase());
-            }
-        }
-        if (columns.isEmpty()) {
-            try (ResultSet result = metadata.getColumns(null, null, table, null)) {
-                while (result.next()) {
-                    columns.add(result.getString("COLUMN_NAME").toUpperCase());
-                }
-            }
-        }
-        return columns;
     }
 
     private String quotedTable(Connection connection, String table) throws SQLException {

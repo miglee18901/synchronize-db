@@ -1,11 +1,10 @@
-package org.example.sync;
+package org.example.sync.offset;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** Persists the last successfully scanned RBT_LOG ID as one plain-text number. */
 public final class OffsetStore {
     private final Path path;
 

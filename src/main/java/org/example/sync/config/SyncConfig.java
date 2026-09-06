@@ -1,13 +1,10 @@
-package org.example.sync;
+package org.example.sync.config;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Properties;
 
-/**
- * Configuration shared by the scheduler and one synchronization run.
- */
 public final class SyncConfig {
     private final int batchSize;
     private final String cronExpression;
@@ -34,9 +31,9 @@ public final class SyncConfig {
             throw new IllegalArgumentException("BATCH_SIZE must be a positive integer");
         }
         String cron = properties.getProperty("CRONJOB", "").trim();
-        String reportPath = properties.getProperty("PATH_STATISTICS_FILE", "result").trim();
+        String reportPath = properties.getProperty("ERROR_REPORT_DIRECTORY", "result").trim();
         if (reportPath.isEmpty()) {
-            throw new IllegalArgumentException("PATH_STATISTICS_FILE must not be empty");
+            throw new IllegalArgumentException("ERROR_REPORT_DIRECTORY must not be empty");
         }
         return new SyncConfig(batchSize, cron, new File(reportPath));
     }
@@ -52,4 +49,5 @@ public final class SyncConfig {
     public File getReportDirectory() {
         return reportDirectory;
     }
+
 }

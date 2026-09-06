@@ -1,8 +1,10 @@
-package org.example.sync;
+package org.example.sync.core;
 
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
+import org.example.sync.copy.SchemaCopyPlan;
+import org.example.sync.offset.OffsetStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DatabaseSynchronizerTest {
+public class DatabaseSynchronizerTest {
     private SessionFactory targetFactory;
     private SessionFactory sourceFactory;
     private Session target;
@@ -54,13 +56,9 @@ class DatabaseSynchronizerTest {
 
         Path directory = Files.createTempDirectory("sync-result-");
         Path offset = directory.resolve("offset.txt");
-        SyncRunResult result = new DatabaseSynchronizer().synchronize(targetFactory, sourceFactory, 2,
-                new OffsetStore(offset), directory.toFile());
+        new DatabaseSynchronizer().synchronize(targetFactory, sourceFactory, 2,
+                new OffsetStore(offset), directory.toFile(), SchemaCopyPlan.loadFromSource(sourceFactory));
 
-        assertEquals(4, result.getScanned());
-        assertEquals(3, result.getSynchronizedRows());
-        assertEquals(1, result.getErrors());
-        assertEquals(4L, result.getFinalOffset());
         assertEquals("4", new String(Files.readAllBytes(offset)).trim());
         assertTrue(exists(target, "MAP_CP_RBT", "TONE_A"));
         assertTrue(exists(target, "TONELIST", "TONE_A"));
@@ -77,11 +75,9 @@ class DatabaseSynchronizerTest {
         Path directory = Files.createTempDirectory("sync-result-");
         Path offset = directory.resolve("not-created.txt");
 
-        SyncRunResult result = new DatabaseSynchronizer().synchronize(targetFactory, sourceFactory, 100,
-                new OffsetStore(offset), directory.toFile());
+        new DatabaseSynchronizer().synchronize(targetFactory, sourceFactory, 100,
+                new OffsetStore(offset), directory.toFile(), SchemaCopyPlan.loadFromSource(sourceFactory));
 
-        assertEquals(0L, result.getInitialOffset());
-        assertEquals(0, result.getSynchronizedRows());
         assertFalse(exists(target, "TONELIST", "EXISTS"));
     }
 

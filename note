@@ -5,7 +5,7 @@ Cấu hình:
     1 file config tên là config.properties:
         - CRONJOB: cronjob chạy tool, VD: 0 0/5 * * * ? (mỗi 5 phút chạy 1 lần)
         - BATCH_SIZE: 1000
-        - PATH_STATISTICS_FILE: export kết quả chạy
+        - ERROR_REPORT_DIRECTORY: thư mục lưu chi tiết lỗi đồng bộ
     1 file lưu offset, ten là offset.txt, chứa 1 dòng và một giá trị số lưu offset của bảng RBT_LOG trên môi trường 21M, format:
         OFFSET
     1 file cấu hình log, sử dung log4j2
