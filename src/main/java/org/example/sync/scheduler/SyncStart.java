@@ -5,8 +5,6 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.example.sync.config.SyncConfig;
 import org.example.sync.copy.SchemaCopyPlan;
-import org.example.sync.core.DatabaseSynchronizer;
-import org.example.sync.offset.OffsetStore;
 import org.example.utils.DbHelper;
 import org.hibernate.SessionFactory;
 
@@ -29,7 +27,7 @@ public final class SyncStart {
     }
 
     public static void main(String[] args) {
-        logger.info("Starting CRBT synchronizer...");
+        logger.info("Starting ToolSyncTonelist21mTo16m...");
 
         LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
         ctx.setConfigLocation(LOG4J.toURI());
@@ -42,7 +40,7 @@ public final class SyncStart {
             target = DbHelper.buildSessionFactory(CONFIG_16M);
             source = DbHelper.buildSessionFactory(CONFIG_21M);
             SchemaCopyPlan schemaCopyPlan = loadSchemaCopyPlan(source);
-            timer = new Timer("crbt-sync-timer");
+            timer = new Timer("tonelist-21m-to-16m-sync-timer");
             timer.schedule(new SyncTask(config, target, source, schemaCopyPlan), config.getDelayTimeMillis(), config.getPeriodTimeMillis());
             addShutdownHook(timer, target, source);
         } catch (Exception e) {
@@ -51,10 +49,10 @@ public final class SyncStart {
             }
             close(source);
             close(target);
-            logger.error("Error starting CRBT synchronizer: {}", e.getMessage(), e);
+            logger.error("Error starting ToolSyncTonelist21mTo16m: {}", e.getMessage(), e);
         }
 
-        logger.info("CRBT synchronizer started.");
+        logger.info("ToolSyncTonelist21mTo16m started.");
     }
 
     private static SyncConfig getConfig() throws IOException {
@@ -112,7 +110,7 @@ public final class SyncStart {
         @Override
         public void run() {
             try {
-                new DatabaseSynchronizer().synchronize(target, source, config.getBatchSize(), new OffsetStore(OFFSET.toPath()), config.getReportDirectory(), schemaCopyPlan);
+                new DatabaseSynchronizer().synchronize(target, source, config.getBatchSize(), new OffsetStore(OFFSET.toPath()), config.getServerIpWhitelist(), schemaCopyPlan);
             } catch (Exception exception) {
                 LogManager.getLogger(SyncStart.class).error("Synchronization task failed", exception);
             }

@@ -1,0 +1,73 @@
+TÀI LIỆU MÔ TẢ YÊU CẦU CHỨC NĂNG
+Dự án: ToolSyncTonelist21mTo16m
+
+1. Cấu hình công cụ đồng bộ
+
+Bước 1: Người vận hành chuẩn bị đầy đủ các file cấu hình tại thư mục etc trước khi khởi động công cụ.
+Bước 2: Người vận hành khai báo BATCH_SIZE để quy định số sự kiện tối đa được xử lý trong một lượt đọc dữ liệu.
+Bước 3: BATCH_SIZE phải là số nguyên lớn hơn 0; nếu không khai báo, hệ thống sử dụng giá trị mặc định 1000.
+Bước 4: Người vận hành khai báo DELAY_TIME để quy định thời gian chờ trước lần đồng bộ đầu tiên, tính bằng mili giây.
+Bước 5: DELAY_TIME phải là số nguyên lớn hơn 0; giá trị thiếu hoặc không hợp lệ làm hệ thống từ chối khởi động.
+Bước 6: Người vận hành khai báo PERIOD_TIME để quy định khoảng thời gian giữa hai lần đồng bộ liên tiếp, tính bằng mili giây.
+Bước 7: PERIOD_TIME phải là số nguyên lớn hơn 0; giá trị thiếu hoặc không hợp lệ làm hệ thống từ chối khởi động.
+Bước 8: Người vận hành khai báo SERVER_IP_WHITELIST là danh sách địa chỉ máy chủ được phép đồng bộ, phân cách bằng dấu phẩy.
+Bước 9: Hệ thống tự loại bỏ khoảng trắng, phần tử rỗng và địa chỉ bị trùng trong danh sách whitelist.
+Bước 10: SERVER_IP_WHITELIST phải có ít nhất một địa chỉ hợp lệ; nếu danh sách rỗng, hệ thống không thực hiện đồng bộ.
+Bước 11: Người vận hành cấu hình thông tin kết nối cơ sở dữ liệu nguồn CRBT21M, bao gồm địa chỉ, tài khoản và mật khẩu.
+Bước 12: Người vận hành cấu hình thông tin kết nối cơ sở dữ liệu đích CRBT16M, bao gồm địa chỉ, tài khoản và mật khẩu.
+Bước 13: Tài khoản CRBT21M phải có quyền đọc dữ liệu sự kiện và dữ liệu kho nhạc cần đồng bộ.
+Bước 14: Tài khoản CRBT16M phải có quyền đọc, thêm dữ liệu kho nhạc và ghi lịch sử kết quả đồng bộ.
+Bước 15: Khi file cấu hình bị thiếu, thông tin sai hoặc không kết nối được cơ sở dữ liệu, hệ thống dừng khởi động và ghi rõ nguyên nhân vào nhật ký vận hành.
+Bước 16: Trước khi bắt đầu chạy định kỳ, hệ thống kiểm tra cấu trúc dữ liệu nguồn; nếu cấu trúc không đáp ứng yêu cầu, hệ thống dừng để tránh sao chép sai dữ liệu.
+
+2. Nhận biết sự kiện thay đổi bài hát và quản lý vị trí xử lý
+
+Bước 1: Sau khi khởi động thành công, hệ thống chờ theo thời gian DELAY_TIME trước khi thực hiện lần đồng bộ đầu tiên.
+Bước 2: Hệ thống tự động thực hiện các lần đồng bộ tiếp theo theo chu kỳ PERIOD_TIME.
+Bước 3: Tại một thời điểm chỉ có một lượt đồng bộ được thực hiện để tránh hai lượt cùng xử lý một sự kiện.
+Bước 4: Khi bắt đầu một lượt đồng bộ, hệ thống đọc ID cuối cùng đã xử lý từ file etc/offset.txt.
+Bước 5: Nếu file offset chưa tồn tại hoặc chưa có nội dung, hệ thống bắt đầu đọc sự kiện từ offset bằng 0.
+Bước 6: Offset phải là số nguyên không âm; nếu nội dung sai định dạng hoặc có giá trị âm, hệ thống dừng lượt xử lý và ghi lỗi.
+Bước 7: Hệ thống tìm các sự kiện mới trong RBT_LOG có ID lớn hơn offset hiện tại.
+Bước 8: Hệ thống chỉ tiếp nhận sự kiện đã thành công tại nguồn, tương ứng RESULT bằng 1 và ACTION_TYPE bằng 1 hoặc 3.
+Bước 9: Hệ thống chỉ tiếp nhận sự kiện có SERVER thuộc danh sách SERVER_IP_WHITELIST đã cấu hình.
+Bước 10: Sự kiện không thuộc whitelist, có RESULT khác 1 hoặc ACTION_TYPE khác 1 và 3 không được đưa vào luồng đồng bộ.
+Bước 11: Các sự kiện hợp lệ được sắp xếp theo ID tăng dần để bảo đảm xử lý đúng thứ tự phát sinh.
+Bước 12: Mỗi lượt đọc lấy tối đa số sự kiện bằng BATCH_SIZE; khi xử lý hết, hệ thống tiếp tục đọc nhóm kế tiếp.
+Bước 13: Với mỗi sự kiện, hệ thống tiếp nhận ID, TONE_ID, TONE_CODE, ACTION_TYPE và SERVER để phục vụ xử lý nghiệp vụ.
+Bước 14: Nếu không đọc được dữ liệu RBT_LOG, hệ thống dừng lượt đồng bộ, ghi nhận vị trí đang đọc và không cập nhật offset mới.
+Bước 15: Sau mỗi sự kiện được duyệt, hệ thống ghi nhớ tạm thời ID của sự kiện đó làm vị trí xử lý mới nhất.
+Bước 16: Khi không còn sự kiện hợp lệ, hệ thống kết thúc lượt quét và ghi ID mới nhất vào etc/offset.txt.
+Bước 17: Nếu không thể ghi file offset, hệ thống thông báo lỗi; file offset cũ có thể tiếp tục được sử dụng ở lần chạy sau.
+Bước 18: Sự kiện đồng bộ lỗi vẫn được tính là đã duyệt nếu kết quả lỗi đã được ghi thành công vào TONELIST_SYNLOG; offset vì vậy vẫn có thể tiến qua sự kiện lỗi.
+Bước 19: Nếu hệ thống dừng trước khi hoàn tất lượt quét, offset mới không được lưu và lần chạy sau bắt đầu lại từ offset cũ.
+Bước 20: Kết thúc lượt chạy, người vận hành có thể xem tổng số sự kiện đã quét, số dữ liệu đã sao chép, số lỗi và offset mới trong nhật ký.
+
+3. Cập nhật kho nhạc và ghi nhận kết quả đồng bộ
+
+Bước 1: Hệ thống xử lý lần lượt từng sự kiện hợp lệ theo thứ tự ID và giới hạn số lượng theo BATCH_SIZE.
+Bước 2: Hệ thống xác định nghiệp vụ cần thực hiện dựa trên ACTION_TYPE của sự kiện.
+Bước 3: Với ACTION_TYPE bằng 3, hệ thống thực hiện đồng bộ thông tin tương ứng trong MAP_CP_RBT.
+Bước 4: Với ACTION_TYPE bằng 1, hệ thống thực hiện đồng bộ MAP_CP_RBT, sau đó đồng bộ TONELIST.
+Bước 5: Với ACTION_TYPE khác 1 và 3, sự kiện bị loại ngay khi đọc RBT_LOG nên không thay đổi kho nhạc và không ghi TONELIST_SYNLOG.
+Bước 6: Trước khi đồng bộ, hệ thống kiểm tra TONE_CODE phải có giá trị; TONE_CODE rỗng hoặc không hợp lệ được ghi nhận là lỗi.
+Bước 7: Hệ thống kiểm tra TONE_CODE đã tồn tại trong MAP_CP_RBT tại CRBT16M hay chưa.
+Bước 8: Nếu MAP_CP_RBT đã tồn tại tại CRBT16M, hệ thống không sao chép lại và ghi nhận sự kiện là thành công.
+Bước 9: Nếu MAP_CP_RBT chưa tồn tại tại CRBT16M, hệ thống tìm dữ liệu tương ứng tại CRBT21M.
+Bước 10: Nếu không tìm thấy MAP_CP_RBT tại CRBT21M, hệ thống dừng xử lý sự kiện và ghi nhận lỗi không tồn tại dữ liệu nguồn.
+Bước 11: Khi tìm thấy dữ liệu, hệ thống sao chép đầy đủ thông tin MAP_CP_RBT từ CRBT21M sang CRBT16M.
+Bước 12: Đối với ACTION_TYPE bằng 1, hệ thống tiếp tục kiểm tra TONE_CODE đã tồn tại trong TONELIST tại CRBT16M hay chưa.
+Bước 13: Nếu TONELIST chưa tồn tại tại CRBT16M, hệ thống tìm và sao chép dữ liệu TONELIST tương ứng từ CRBT21M.
+Bước 14: Nếu không tìm thấy TONELIST tại CRBT21M hoặc dữ liệu biến mất trong lúc xử lý, hệ thống ghi nhận sự kiện là lỗi.
+Bước 15: Khi toàn bộ dữ liệu của sự kiện được cập nhật thành công, hệ thống ghi một dòng TONELIST_SYNLOG với TONE_ID, TONE_CODE và thời điểm hiện tại.
+Bước 16: Với kết quả thành công, DESCRIPTION có giá trị “success” và STATE có giá trị 1.
+Bước 17: LOG_ID của TONELIST_SYNLOG do cơ sở dữ liệu tự động sinh tăng dần; người vận hành không cần cung cấp giá trị này.
+Bước 18: Dữ liệu kho nhạc và bản ghi kết quả thành công chỉ được xác nhận khi tất cả thao tác của sự kiện hoàn tất.
+Bước 19: Nếu một thao tác phát sinh lỗi, hệ thống hủy toàn bộ thay đổi kho nhạc chưa hoàn tất của sự kiện đó.
+Bước 20: Sau khi hủy thay đổi bị lỗi, hệ thống ghi một dòng TONELIST_SYNLOG với TONE_ID, TONE_CODE và thời điểm hiện tại.
+Bước 21: Với kết quả lỗi, DESCRIPTION chỉ chứa nội dung lỗi, không kèm ID, TONE_ID, TONE_CODE, ACTION_TYPE hoặc SERVER; STATE có giá trị 0.
+Bước 22: Nếu bản ghi lỗi được lưu thành công, hệ thống tiếp tục xử lý sự kiện kế tiếp thay vì dừng toàn bộ lượt đồng bộ.
+Bước 23: Nếu không thể lưu kết quả lỗi vào TONELIST_SYNLOG, hệ thống dừng lượt đồng bộ và không cập nhật offset mới.
+Bước 24: Các lỗi kỹ thuật chi tiết vẫn được ghi vào nhật ký hệ thống để người vận hành kiểm tra và xử lý.
+Bước 25: Theo phạm vi hiện tại, hệ thống chỉ bổ sung dữ liệu mới; chưa thực hiện cập nhật hoặc xóa dữ liệu đã tồn tại.
+Bước 26: Nếu nghiệp vụ yêu cầu sửa hoặc xóa dữ liệu thực tế, cần bổ sung quy tắc ACTION_TYPE tương ứng trước khi đưa vào sử dụng.

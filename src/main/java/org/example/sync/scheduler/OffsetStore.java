@@ -1,4 +1,4 @@
-package org.example.sync.offset;
+package org.example.sync.scheduler;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

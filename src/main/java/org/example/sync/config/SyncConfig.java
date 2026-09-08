@@ -3,19 +3,22 @@ package org.example.sync.config;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 
 public final class SyncConfig {
     private final int batchSize;
     private final long delayTimeMillis;
     private final long periodTimeMillis;
-    private final File reportDirectory;
+    private final List<String> serverIpWhitelist;
 
-    private SyncConfig(int batchSize, long delayTimeMillis, long periodTimeMillis, File reportDirectory) {
+    private SyncConfig(int batchSize, long delayTimeMillis, long periodTimeMillis, List<String> serverIpWhitelist) {
         this.batchSize = batchSize;
         this.delayTimeMillis = delayTimeMillis;
         this.periodTimeMillis = periodTimeMillis;
-        this.reportDirectory = reportDirectory;
+        this.serverIpWhitelist = Collections.unmodifiableList(new ArrayList<>(serverIpWhitelist));
     }
 
     public static SyncConfig load(File file) throws IOException {
@@ -34,7 +37,7 @@ public final class SyncConfig {
         }
         long delayTimeMillis;
         try {
-            delayTimeMillis = Long.parseLong(properties.getProperty("DELAY_TIME", "").trim());
+            delayTimeMillis = Long.parseLong(properties.getProperty("DELAY_TIME", "3000").trim());
         } catch (NumberFormatException exception) {
             throw new IllegalArgumentException("DELAY_TIME must be a positive integer number of milliseconds", exception);
         }
@@ -43,18 +46,28 @@ public final class SyncConfig {
         }
         long periodTimeMillis;
         try {
-            periodTimeMillis = Long.parseLong(properties.getProperty("PERIOD_TIME", "").trim());
+            periodTimeMillis = Long.parseLong(properties.getProperty("PERIOD_TIME", "300000").trim());
         } catch (NumberFormatException exception) {
             throw new IllegalArgumentException("PERIOD_TIME must be a positive integer number of milliseconds", exception);
         }
         if (periodTimeMillis <= 0) {
             throw new IllegalArgumentException("PERIOD_TIME must be a positive integer number of milliseconds");
         }
-        String reportPath = properties.getProperty("ERROR_REPORT_DIRECTORY", "result").trim();
-        if (reportPath.isEmpty()) {
-            throw new IllegalArgumentException("ERROR_REPORT_DIRECTORY must not be empty");
+        String whitelistValue = properties.getProperty("SERVER_IP_WHITELIST", "").trim();
+        if (whitelistValue.isEmpty()) {
+            throw new IllegalArgumentException("SERVER_IP_WHITELIST must contain at least one IP address");
         }
-        return new SyncConfig(batchSize, delayTimeMillis, periodTimeMillis, new File(reportPath));
+        List<String> serverIpWhitelist = new ArrayList<>();
+        for (String value : whitelistValue.split(",")) {
+            String ip = value.trim();
+            if (!ip.isEmpty() && !serverIpWhitelist.contains(ip)) {
+                serverIpWhitelist.add(ip);
+            }
+        }
+        if (serverIpWhitelist.isEmpty()) {
+            throw new IllegalArgumentException("SERVER_IP_WHITELIST must contain at least one IP address");
+        }
+        return new SyncConfig(batchSize, delayTimeMillis, periodTimeMillis, serverIpWhitelist);
     }
 
     public int getBatchSize() {
@@ -69,8 +82,8 @@ public final class SyncConfig {
         return periodTimeMillis;
     }
 
-    public File getReportDirectory() {
-        return reportDirectory;
+    public List<String> getServerIpWhitelist() {
+        return serverIpWhitelist;
     }
 
 }
