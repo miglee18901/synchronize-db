@@ -72,7 +72,7 @@ public final class DatabaseSynchronizer {
 
     private List<RBTLogInfo> loadBatch(Session source, long offset, int batchSize, List<String> serverIpWhitelist) throws SQLException {
         List<RBTLogInfo> records = new ArrayList<>();
-        SQLQuery query = source.createSQLQuery("SELECT ID, TONE_ID, TONE_CODE, ACTION_TYPE, SERVER FROM RBT_LOG "
+        SQLQuery query = source.createSQLQuery("SELECT ID, TONE_ID, TONE_CODE, ACTION_TYPE FROM RBT_LOG "
                 + "WHERE ID > :offset AND RESULT = 1 AND ACTION_TYPE IN (1, 3) "
                 + "AND SERVER IN (:serverIpWhitelist) ORDER BY ID ASC");
         query.setLong("offset", offset);
@@ -81,8 +81,7 @@ public final class DatabaseSynchronizer {
         List<?> rows = query.list();
         for (Object value : rows) {
             Object[] row = (Object[]) value;
-            records.add(new RBTLogInfo(((Number) row[0]).longValue(), row[1].toString(), row[2] == null ? null : row[2].toString(),
-                    ((Number) row[3]).intValue(), row[4] == null ? null : row[4].toString()));
+            records.add(new RBTLogInfo(((Number) row[0]).longValue(), row[1].toString(), row[2] == null ? null : row[2].toString(), ((Number) row[3]).intValue()));
         }
         return records;
     }

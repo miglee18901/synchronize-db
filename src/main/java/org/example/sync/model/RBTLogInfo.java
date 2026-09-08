@@ -5,14 +5,12 @@ public final class RBTLogInfo {
     private final String toneId;
     private final String toneCode;
     private final int actionType;
-    private final String server;
 
-    public RBTLogInfo(long id, String toneId, String toneCode, int actionType, String server) {
+    public RBTLogInfo(long id, String toneId, String toneCode, int actionType) {
         this.id = id;
         this.toneId = toneId;
         this.toneCode = toneCode;
         this.actionType = actionType;
-        this.server = server;
     }
 
     public long getId() {
@@ -31,7 +29,4 @@ public final class RBTLogInfo {
         return actionType;
     }
 
-    public String getServer() {
-        return server;
-    }
 }
