@@ -4,7 +4,7 @@ Công cụ Java đồng bộ dữ liệu nhạc chờ từ CRBT21M (nguồn) san
 
 ## Yêu cầu
 
-- JDK 7
+- JDK 8 trở lên
 - Apache Maven 3.8 trở lên
 - MySQL có hai schema CRBT21M và CRBT16M
 
