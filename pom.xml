@@ -10,8 +10,8 @@
     <version>1.0-SNAPSHOT</version>
 
     <properties>
-        <maven.compiler.source>7</maven.compiler.source>
-        <maven.compiler.target>7</maven.compiler.target>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <hibernate.version>3.1.3</hibernate.version>
         <log4j.version>2.12.4</log4j.version>
@@ -78,7 +78,7 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- JUnit 4 is the latest JUnit generation compatible with Java 7. -->
+        <!-- JUnit 4 test framework. -->
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
@@ -100,7 +100,7 @@
                     <target>${maven.compiler.target}</target>
                 </configuration>
             </plugin>
-            <!-- Maven Surefire version compatible with Java 7 and JUnit 4. -->
+            <!-- Maven Surefire plugin for JUnit 4 tests. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
