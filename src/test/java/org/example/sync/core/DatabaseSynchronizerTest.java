@@ -62,15 +62,24 @@ public class DatabaseSynchronizerTest {
         new DatabaseSynchronizer().synchronize(targetFactory, sourceFactory, 2,
                 new OffsetStore(offset), Arrays.asList("10.0.0.1", "10.0.0.2"), SchemaCopyPlan.loadFromSource(sourceFactory));
 
-        assertEquals("4", new String(Files.readAllBytes(offset)).trim());
+        assertEquals("2", new String(Files.readAllBytes(offset)).trim());
         assertTrue(exists(target, "MAP_CP_RBT", "TONE_A"));
         assertTrue(exists(target, "TONELIST", "TONE_A"));
         assertTrue(exists(target, "MAP_CP_RBT", "TONE_B"));
         assertFalse(exists(target, "TONELIST", "TONE_B"));
+        assertEquals(2, scalarInt(target, "SELECT COUNT(*) FROM TONELIST_SYNLOG"));
+
+        new DatabaseSynchronizer().synchronize(targetFactory, sourceFactory, 2,
+                new OffsetStore(offset), Arrays.asList("10.0.0.1", "10.0.0.2"), SchemaCopyPlan.loadFromSource(sourceFactory));
+
+        assertEquals("4", new String(Files.readAllBytes(offset)).trim());
         assertEquals(3, scalarInt(target, "SELECT COUNT(*) FROM TONELIST_SYNLOG"));
         assertEquals(2, scalarInt(target, "SELECT COUNT(*) FROM TONELIST_SYNLOG WHERE STATE = 1"));
         assertEquals(1, scalarInt(target, "SELECT COUNT(*) FROM TONELIST_SYNLOG WHERE STATE = 0"));
         assertEquals(1004, scalarInt(target, "SELECT TONE_ID FROM TONELIST_SYNLOG WHERE STATE = 0"));
+        assertEquals("TONE_A", scalarString(target, "SELECT TONE_CODE FROM TONELIST_SYNLOG WHERE TONE_ID = 1001"));
+        assertEquals("TONE_B", scalarString(target, "SELECT TONE_CODE FROM TONELIST_SYNLOG WHERE TONE_ID = 1002"));
+        assertEquals("MISSING", scalarString(target, "SELECT TONE_CODE FROM TONELIST_SYNLOG WHERE TONE_ID = 1004"));
     }
 
     @Test
@@ -145,6 +154,14 @@ public class DatabaseSynchronizerTest {
              ResultSet result = statement.executeQuery(sql)) {
             result.next();
             return result.getInt(1);
+        }
+    }
+
+    private String scalarString(Session session, String sql) throws Exception {
+        try (Statement statement = session.connection().createStatement();
+             ResultSet result = statement.executeQuery(sql)) {
+            result.next();
+            return result.getString(1);
         }
     }
 }

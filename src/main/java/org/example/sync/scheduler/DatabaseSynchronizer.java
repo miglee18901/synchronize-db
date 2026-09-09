@@ -30,35 +30,30 @@ public final class DatabaseSynchronizer {
         Session target = target16M.openSession();
         Session source = source21M.openSession();
         try {
-            while (true) {
-                List<RBTLogInfo> batch;
+            List<RBTLogInfo> batch;
+            try {
+                batch = loadBatch(source, lastId, batchSize, serverIpWhitelist);
+            } catch (SQLException exception) {
+                throw new IOException("Unable to read RBT_LOG after ID " + lastId, exception);
+            }
+            for (RBTLogInfo record : batch) {
+                scanned++;
+                lastId = record.getId();
                 try {
-                    batch = loadBatch(source, lastId, batchSize, serverIpWhitelist);
-                } catch (SQLException exception) {
-                    throw new IOException("Unable to read RBT_LOG after ID " + lastId, exception);
-                }
-                if (batch.isEmpty()) {
-                    break;
-                }
-                for (RBTLogInfo record : batch) {
-                    scanned++;
-                    lastId = record.getId();
+                    int recordCopied = process(target, source, record, copyPlan);
+                    insertSyncLog(target, record, "success", 1);
+                    target.connection().commit();
+                    copied += recordCopied;
+                } catch (Exception exception) {
+                    errors++;
+                    rollback(target.connection(), exception);
+                    logger.error("Synchronization failed: {}", exception.getMessage(), exception);
                     try {
-                        int recordCopied = process(target, source, record, copyPlan);
-                        insertSyncLog(target, record, "success", 1);
+                        insertSyncLog(target, record, exception.getMessage(), 0);
                         target.connection().commit();
-                        copied += recordCopied;
-                    } catch (Exception exception) {
-                        errors++;
-                        rollback(target.connection(), exception);
-                        logger.error("Synchronization failed: {}", exception.getMessage(), exception);
-                        try {
-                            insertSyncLog(target, record, exception.getMessage(), 0);
-                            target.connection().commit();
-                        } catch (SQLException logException) {
-                            rollback(target.connection(), logException);
-                            throw new IOException("Unable to insert failure into TONELIST_SYNLOG for RBT_LOG ID " + record.getId(), logException);
-                        }
+                    } catch (SQLException logException) {
+                        rollback(target.connection(), logException);
+                        throw new IOException("Unable to insert failure into TONELIST_SYNLOG for RBT_LOG ID " + record.getId(), logException);
                     }
                 }
             }

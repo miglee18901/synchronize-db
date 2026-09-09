@@ -30,7 +30,7 @@ SERVER_IP_WHITELIST=127.0.0.1,10.0.0.1
 
 | Thuộc tính | Ý nghĩa |
 | --- | --- |
-| `BATCH_SIZE` | Số bản ghi tối đa trong một batch. |
+| `BATCH_SIZE` | Số bản ghi tối đa được đọc và xử lý trong mỗi lần scheduler chạy. |
 | `DELAY_TIME` | Thời gian chờ trước lượt đầu tiên, đơn vị mili giây. |
 | `PERIOD_TIME` | Chu kỳ chạy, đơn vị mili giây. |
 | `SERVER_IP_WHITELIST` | Danh sách giá trị `RBT_LOG.SERVER`, phân cách bằng dấu phẩy. Giá trị rỗng không hợp lệ. |

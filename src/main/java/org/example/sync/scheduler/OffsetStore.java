@@ -16,7 +16,7 @@ public final class OffsetStore {
         if (!Files.exists(path)) {
             return 0L;
         }
-        String value = new String(Files.readAllBytes(path), StandardCharsets.UTF_8).trim();
+        String value = new String(Files.readAllBytes(path.toAbsolutePath().normalize().toFile().getCanonicalFile().toPath()), StandardCharsets.UTF_8).trim();
         if (value.isEmpty()) {
             return 0L;
         }
@@ -35,7 +35,7 @@ public final class OffsetStore {
         if (offset < 0) {
             throw new IllegalArgumentException("Offset must not be negative");
         }
-        Path parent = path.toAbsolutePath().getParent();
+        Path parent = path.getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
