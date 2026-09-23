@@ -19,6 +19,12 @@ import java.util.List;
 
 public final class DatabaseSynchronizer {
     private static final Logger logger = LogManager.getLogger(DatabaseSynchronizer.class);
+    private static final String[] ACTION_15_DELETE_TABLES = {
+            SchemaCopyPlan.MAP_CP_RBT, SchemaCopyPlan.TONELIST,
+            "SPECIAL_TONELIST", "TOP_HOT", "TOP_MONTH", "TOP_WEEK", "TONE_TOPIC",
+            "RBT_SYNTAX_REPRESENT", "TONE_SMS_SYNTAX", "INTRO_RBT_CONFIG",
+            "MAP_CATEGORY_RBT_HOT", "CORP_RBT", "CORP_MSISDN_ACTION"
+    };
     private final DatabaseRowCopier copier = new DatabaseRowCopier();
 
     public void synchronize(SessionFactory target16M, SessionFactory source21M, int batchSize, OffsetStore offsetStore,
@@ -41,20 +47,14 @@ public final class DatabaseSynchronizer {
                 lastId = record.getId();
                 try {
                     int recordCopied = process(target, source, record, copyPlan);
-                    insertSyncLog(target, record, "success", 1);
                     target.connection().commit();
                     copied += recordCopied;
+                    writeSyncLog(target16M, record, "success", 1);
                 } catch (Exception exception) {
                     errors++;
                     rollback(target.connection(), exception);
                     logger.error("Synchronization failed: {}", exception.getMessage(), exception);
-                    try {
-                        insertSyncLog(target, record, exception.getMessage(), 0);
-                        target.connection().commit();
-                    } catch (SQLException logException) {
-                        rollback(target.connection(), logException);
-                        throw new IOException("Unable to insert failure into TONELIST_SYNLOG for RBT_LOG ID " + record.getId(), logException);
-                    }
+                    writeSyncLog(target16M, record, exception.getMessage(), 0);
                 }
             }
         } finally {
@@ -68,7 +68,7 @@ public final class DatabaseSynchronizer {
     private List<RBTLogInfo> loadBatch(Session source, long offset, int batchSize, List<String> serverIpWhitelist) throws SQLException {
         List<RBTLogInfo> records = new ArrayList<>();
         SQLQuery query = source.createSQLQuery("SELECT ID, TONE_ID, TONE_CODE, ACTION_TYPE FROM RBT_LOG "
-                + "WHERE ID > :offset AND RESULT = 1 AND ACTION_TYPE IN (1, 3) "
+                + "WHERE ID > :offset AND RESULT = 1 AND ACTION_TYPE IN (1, 3, 15) "
                 + "AND SERVER IN (:serverIpWhitelist) ORDER BY ID ASC");
         query.setLong("offset", offset);
         query.setParameterList("serverIpWhitelist", serverIpWhitelist);
@@ -85,32 +85,50 @@ public final class DatabaseSynchronizer {
         if (record.getToneCode() == null || record.getToneCode().trim().isEmpty()) {
             throw new SQLException("TONE_CODE is empty");
         }
-        if (copier.exists(target, SchemaCopyPlan.MAP_CP_RBT, record.getToneCode())) {
-            return 0;
-        }
-        if (!copier.exists(source, SchemaCopyPlan.MAP_CP_RBT, record.getToneCode())) {
-            throw new SQLException("TONE_CODE does not exist in CRBT21M." + SchemaCopyPlan.MAP_CP_RBT);
+        if (record.getActionType() == 15) {
+            int deleted = 0;
+            for (String table : ACTION_15_DELETE_TABLES) {
+                deleted += copier.deleteByToneCode(target, table, record.getToneCode());
+            }
+            return deleted;
         }
 
-        if (!copier.copyByToneCode(source, target, copyPlan.getMapCpRbt(), record.getToneCode())) {
-            throw new SQLException("MAP_CP_RBT source row disappeared before insert");
+        int synchronizedRows = copier.synchronizeLatestByToneCode(source, target, copyPlan.getMapCpRbt(), record.getToneCode()) ? 1 : 0;
+        if (record.getActionType() == 1 && copier.synchronizeLatestByToneCode(source, target, copyPlan.getTonelist(), record.getToneCode())) {
+            synchronizedRows++;
         }
-        int copied = 1;
-        if (record.getActionType() == 1 && !copier.exists(target, SchemaCopyPlan.TONELIST, record.getToneCode())) {
-            if (!copier.exists(source, SchemaCopyPlan.TONELIST, record.getToneCode())) {
-                throw new SQLException("TONE_CODE does not exist in CRBT21M." + SchemaCopyPlan.TONELIST);
-            }
-            if (!copier.copyByToneCode(source, target, copyPlan.getTonelist(), record.getToneCode())) {
-                throw new SQLException("TONELIST source row disappeared before insert");
-            }
-            copied++;
-        }
-        return copied;
+        return synchronizedRows;
     }
 
-    private void insertSyncLog(Session target, RBTLogInfo record, String description, int state) throws SQLException {
+    private void writeSyncLog(SessionFactory targetFactory, RBTLogInfo record, String description, int state) {
+        Session logSession = null;
+        try {
+            logSession = targetFactory.openSession();
+            insertSyncLog(logSession, record, description, state);
+            logSession.connection().commit();
+        } catch (Exception exception) {
+            if (logSession != null) {
+                try {
+                    rollback(logSession.connection(), exception);
+                } catch (Exception rollbackException) {
+                    exception.addSuppressed(rollbackException);
+                }
+            }
+            logger.error("Unable to write TONELIST_SYNLOG for RBT_LOG ID {}: {}", record.getId(), exception.getMessage(), exception);
+        } finally {
+            if (logSession != null) {
+                try {
+                    logSession.close();
+                } catch (Exception closeException) {
+                    logger.error("Unable to close TONELIST_SYNLOG session for RBT_LOG ID {}: {}", record.getId(), closeException.getMessage(), closeException);
+                }
+            }
+        }
+    }
+
+    private void insertSyncLog(Session logSession, RBTLogInfo record, String description, int state) throws SQLException {
         String sql = "INSERT INTO TONELIST_SYNLOG (TONE_ID, TONE_CODE, MOD_DATE, DESCRIPTION, STATE) VALUES (?, ?, ?, ?, ?)";
-        try (PreparedStatement statement = target.connection().prepareStatement(sql)) {
+        try (PreparedStatement statement = logSession.connection().prepareStatement(sql)) {
             statement.setString(1, record.getToneId());
             statement.setString(2, record.getToneCode());
             statement.setTimestamp(3, new Timestamp(System.currentTimeMillis()));
