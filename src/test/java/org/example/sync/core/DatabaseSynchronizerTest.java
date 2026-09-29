@@ -31,6 +31,10 @@ public class DatabaseSynchronizerTest {
     private SessionFactory sourceFactory;
     private Session target;
     private Session source;
+    private Path tempDirectory;
+    private Path wavDirectory;
+    private Path tempMusicDirectory;
+    private Path amrDirectory;
 
     @Before
     public void setUp() throws Exception {
@@ -39,6 +43,11 @@ public class DatabaseSynchronizerTest {
         sourceFactory = factory("sync_source_" + suffix);
         target = targetFactory.openSession();
         source = sourceFactory.openSession();
+        Path fileRoot = Files.createTempDirectory("sync-files-");
+        tempDirectory = Files.createDirectory(fileRoot.resolve("temp"));
+        wavDirectory = Files.createDirectory(fileRoot.resolve("wav"));
+        tempMusicDirectory = Files.createDirectory(fileRoot.resolve("temp-music"));
+        amrDirectory = Files.createDirectory(fileRoot.resolve("amr"));
         createSchema(target);
         createSchema(source);
     }
@@ -97,7 +106,8 @@ public class DatabaseSynchronizerTest {
     @Test
     public void missingSourceAndEmptyToneCodeAreLoggedAsErrors() throws Exception {
         insertLog(1, "MISSING", 3);
-        execute(source, "INSERT INTO RBT_LOG VALUES (2, 1002, NULL, 3, 1, '10.0.0.1')");
+        execute(source, "INSERT INTO RBT_LOG (ID, TONE_ID, TONE_CODE, ACTION_TYPE, RESULT, SERVER, FPATH) "
+                + "VALUES (2, 1002, NULL, 3, 1, '10.0.0.1', 'tones/empty.amr')");
         commitSetupData();
 
         synchronize();
@@ -120,7 +130,7 @@ public class DatabaseSynchronizerTest {
         target.connection().commit();
 
         Path offset = Files.createTempDirectory("sync-log-failure-").resolve("offset.txt");
-        new DatabaseSynchronizer().synchronize(targetFactory, sourceFactory, 100,
+        synchronizer().synchronize(targetFactory, sourceFactory, 100,
                 new OffsetStore(offset), Arrays.asList("10.0.0.1"),
                 SchemaCopyPlan.loadFromSource(sourceFactory));
 
@@ -137,6 +147,12 @@ public class DatabaseSynchronizerTest {
             execute(target, "INSERT INTO " + table + " VALUES ('DELETE_ME')");
             execute(target, "INSERT INTO " + table + " VALUES ('KEEP')");
         }
+        execute(target, "INSERT INTO TONE_CATEGORY VALUES ('1001', 'DELETE_ME')");
+        execute(target, "INSERT INTO TONE_CATEGORY VALUES ('9999', 'DELETE_ME')");
+        Path tempWav = createFile(tempDirectory, "tones/DELETE_ME.wav");
+        Path wav = createFile(wavDirectory, "tones/DELETE_ME.wav");
+        Path mp3 = createFile(tempMusicDirectory, "tones/DELETE_ME.mp3");
+        Path amr = createFile(amrDirectory, "tones/DELETE_ME.amr");
         insertLog(1, "DELETE_ME", 15);
         commitSetupData();
 
@@ -148,20 +164,51 @@ public class DatabaseSynchronizerTest {
             assertFalse(exists(target, table, "DELETE_ME"));
             assertTrue(exists(target, table, "KEEP"));
         }
+        assertFalse(existsByToneId(target, "TONE_CATEGORY", "1001"));
+        assertTrue(existsByToneId(target, "TONE_CATEGORY", "9999"));
+        assertFalse(Files.exists(tempWav));
+        assertFalse(Files.exists(wav));
+        assertFalse(Files.exists(mp3));
+        assertFalse(Files.exists(amr));
+        assertEquals(1, scalarInt(target, "SELECT COUNT(*) FROM RBT_DEL_ALL"));
+        assertEquals("DELETE_ME name", scalarString(target, "SELECT TONE_NAME FROM RBT_DEL_ALL"));
+        assertEquals("DELETE_ME singer", scalarString(target, "SELECT SINGER FROM RBT_DEL_ALL"));
+        assertEquals("CP001", scalarString(target, "SELECT CP_CODE FROM RBT_DEL_ALL"));
+        assertEquals("admin", scalarString(target, "SELECT ACTION_ACC FROM RBT_DEL_ALL"));
+        assertEquals("tones/DELETE_ME.amr", scalarString(target, "SELECT FPATH FROM RBT_DEL_ALL"));
+        assertEquals("DELETE_ME description", scalarString(target, "SELECT DESCRIPTION FROM RBT_DEL_ALL"));
+        assertEquals(0, scalarInt(target, "SELECT STATE_DEL_SITE_2 FROM RBT_DEL_ALL"));
+        assertEquals(0, scalarInt(target, "SELECT STATE_DEL_SITE_3 FROM RBT_DEL_ALL"));
+        assertEquals(1, scalarInt(target, "SELECT COUNT(*) FROM RBT_DEL_ALL WHERE AUTHORNAME IS NULL "
+                + "AND CREATE_DATE IS NOT NULL AND EXP_DATE = TIMESTAMP '2027-01-01 00:00:00'"));
         assertEquals("success", scalarString(target, "SELECT DESCRIPTION FROM TONELIST_SYNLOG"));
         assertEquals(1, scalarInt(target, "SELECT STATE FROM TONELIST_SYNLOG"));
     }
 
     private void synchronize() throws Exception {
         Path offset = Files.createTempDirectory("sync-result-").resolve("offset.txt");
-        new DatabaseSynchronizer().synchronize(targetFactory, sourceFactory, 100,
+        synchronizer().synchronize(targetFactory, sourceFactory, 100,
                 new OffsetStore(offset), Arrays.asList("10.0.0.1"),
                 SchemaCopyPlan.loadFromSource(sourceFactory));
     }
 
     private void insertLog(long id, String toneCode, int actionType) throws Exception {
-        execute(source, "INSERT INTO RBT_LOG VALUES (" + id + ", " + (1000 + id) + ", '"
-                + toneCode + "', " + actionType + ", 1, '10.0.0.1')");
+        execute(source, "INSERT INTO RBT_LOG (ID, TONE_ID, TONE_CODE, ACTION_TYPE, RESULT, SERVER, "
+                + "FPATH, TONE_NAME, SINGER, CP_CODE, ACTION_ACC, EXP_DATE, DESCRIPTION) VALUES ("
+                + id + ", " + (1000 + id) + ", '" + toneCode + "', " + actionType
+                + ", 1, '10.0.0.1', 'tones/" + toneCode + ".amr', '" + toneCode
+                + " name', '" + toneCode + " singer', 'CP001', 'admin', "
+                + "TIMESTAMP '2027-01-01 00:00:00', '" + toneCode + " description')");
+    }
+
+    private DatabaseSynchronizer synchronizer() {
+        return new DatabaseSynchronizer(tempDirectory, wavDirectory, tempMusicDirectory, amrDirectory);
+    }
+
+    private Path createFile(Path root, String relativePath) throws Exception {
+        Path file = root.resolve(relativePath);
+        Files.createDirectories(file.getParent());
+        return Files.createFile(file);
     }
 
     private void insertBusinessRow(Session session, String table, long id, String toneCode,
@@ -183,7 +230,9 @@ public class DatabaseSynchronizerTest {
 
     private void createSchema(Session session) throws Exception {
         execute(session, "CREATE TABLE RBT_LOG (ID BIGINT PRIMARY KEY, TONE_ID BIGINT, "
-                + "TONE_CODE VARCHAR(50), ACTION_TYPE INT, RESULT INT, SERVER VARCHAR(50))");
+                + "TONE_CODE VARCHAR(50), ACTION_TYPE INT, RESULT INT, SERVER VARCHAR(50), FPATH VARCHAR(1000), "
+                + "TONE_NAME VARCHAR(100), SINGER VARCHAR(100), CP_CODE VARCHAR(20), ACTION_ACC VARCHAR(50), "
+                + "EXP_DATE TIMESTAMP, DESCRIPTION VARCHAR(1000))");
         execute(session, "CREATE TABLE MAP_CP_RBT (ID BIGINT PRIMARY KEY, TONE_CODE VARCHAR(50) UNIQUE, "
                 + "DESCRIPTION VARCHAR(100), MOD_DATE TIMESTAMP)");
         execute(session, "CREATE TABLE TONELIST (ID BIGINT PRIMARY KEY, TONE_CODE VARCHAR(50) UNIQUE, "
@@ -191,6 +240,12 @@ public class DatabaseSynchronizerTest {
         for (String table : DELETE_TABLES) {
             execute(session, "CREATE TABLE " + table + " (TONE_CODE VARCHAR(50) PRIMARY KEY)");
         }
+        execute(session, "CREATE TABLE TONE_CATEGORY (TONE_ID VARCHAR(50) PRIMARY KEY, TONE_CODE VARCHAR(50))");
+        execute(session, "CREATE TABLE RBT_DEL_ALL (ID BIGINT AUTO_INCREMENT PRIMARY KEY, TONE_ID BIGINT, "
+                + "TONE_CODE VARCHAR(50), TONE_NAME VARCHAR(100), SINGER VARCHAR(100), CP_CODE VARCHAR(20), "
+                + "FPATH VARCHAR(1000), AUTHORNAME VARCHAR(100), ACTION_ACC VARCHAR(50), "
+                + "STATE_DEL_SITE_2 INT, STATE_DEL_SITE_3 INT, CREATE_DATE TIMESTAMP, EXP_DATE TIMESTAMP, "
+                + "DESCRIPTION VARCHAR(1000))");
         execute(session, "CREATE TABLE TONELIST_SYNLOG (LOG_ID BIGINT AUTO_INCREMENT PRIMARY KEY, "
                 + "TONE_ID BIGINT, TONE_CODE VARCHAR(50), MOD_DATE TIMESTAMP, "
                 + "DESCRIPTION VARCHAR(1000), STATE INT)");
@@ -211,6 +266,14 @@ public class DatabaseSynchronizerTest {
         try (Statement statement = session.connection().createStatement();
              ResultSet result = statement.executeQuery(
                      "SELECT 1 FROM " + table + " WHERE TONE_CODE = '" + toneCode + "'")) {
+            return result.next();
+        }
+    }
+
+    private boolean existsByToneId(Session session, String table, String toneId) throws Exception {
+        try (Statement statement = session.connection().createStatement();
+             ResultSet result = statement.executeQuery(
+                     "SELECT 1 FROM " + table + " WHERE TONE_ID = '" + toneId + "'")) {
             return result.next();
         }
     }

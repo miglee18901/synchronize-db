@@ -1,5 +1,7 @@
 package org.example.sync.copy;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.hibernate.Session;
 
 import java.sql.Connection;
@@ -10,11 +12,13 @@ import java.sql.Timestamp;
 import java.util.List;
 
 public final class DatabaseRowCopier {
+    private static final Logger logger = LogManager.getLogger(DatabaseRowCopier.class);
 
     public boolean synchronizeLatestByToneCode(Session source, Session destination, SchemaCopyPlan.TableCopyPlan plan, String toneCode) throws SQLException {
         Connection sourceConnection = source.connection();
         Connection destinationConnection = destination.connection();
         String table = plan.getTable();
+        logger.debug("[TABLE_SYNC] Reading source row: table={}, toneCode={}", table, toneCode);
         String select = "SELECT * FROM " + quotedTable(sourceConnection, table) + " WHERE " + quoted(sourceConnection, "TONE_CODE") + " = ?";
         try (PreparedStatement sourceStatement = sourceConnection.prepareStatement(select)) {
             sourceStatement.setString(1, toneCode);
@@ -24,25 +28,43 @@ public final class DatabaseRowCopier {
                 }
                 Timestamp sourceModDate = sourceRow.getTimestamp("MOD_DATE");
                 Timestamp destinationModDate = findModDate(destinationConnection, table, toneCode);
+                logger.debug("[TABLE_SYNC] Comparing rows: table={}, toneCode={}, sourceModDate={}, destinationModDate={}",
+                        table, toneCode, sourceModDate, destinationModDate);
                 if (destinationModDate == null && !existsByToneCode(destinationConnection, table, toneCode)) {
+                    logger.debug("[TABLE_SYNC] Destination row missing; inserting: table={}, toneCode={}", table, toneCode);
                     insertRow(destinationConnection, plan, sourceRow);
+                    logger.debug("[TABLE_SYNC] Insert completed: table={}, toneCode={}", table, toneCode);
                     return true;
                 }
                 if (sourceModDate != null && (destinationModDate == null || destinationModDate.before(sourceModDate))) {
+                    logger.debug("[TABLE_SYNC] Source row is newer; updating: table={}, toneCode={}", table, toneCode);
                     updateRow(destinationConnection, plan, sourceRow, toneCode);
+                    logger.debug("[TABLE_SYNC] Update completed: table={}, toneCode={}", table, toneCode);
                     return true;
                 }
+                logger.debug("[TABLE_SYNC] Destination row is current; skipping: table={}, toneCode={}", table, toneCode);
                 return false;
             }
         }
     }
 
     public int deleteByToneCode(Session destination, String table, String toneCode) throws SQLException {
+        return deleteByColumn(destination, table, "TONE_CODE", toneCode);
+    }
+
+    public int deleteByToneId(Session destination, String table, String toneId) throws SQLException {
+        return deleteByColumn(destination, table, "TONE_ID", toneId);
+    }
+
+    private int deleteByColumn(Session destination, String table, String column, String value) throws SQLException {
         Connection connection = destination.connection();
-        String sql = "DELETE FROM " + quotedTable(connection, table) + " WHERE " + quoted(connection, "TONE_CODE") + " = ?";
+        String sql = "DELETE FROM " + quotedTable(connection, table) + " WHERE " + quoted(connection, column) + " = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, toneCode);
-            return statement.executeUpdate();
+            statement.setString(1, value);
+            int deleted = statement.executeUpdate();
+            logger.debug("[TABLE_DELETE] Completed: table={}, keyColumn={}, keyValue={}, deletedRows={}",
+                    table, column, value, deleted);
+            return deleted;
         }
     }
 

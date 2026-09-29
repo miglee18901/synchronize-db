@@ -27,21 +27,37 @@ public final class SyncStart {
     }
 
     public static void main(String[] args) {
-        logger.info("Starting ToolSyncTonelist21mTo16m...");
-
         LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
         ctx.setConfigLocation(LOG4J.toURI());
+        logger.info("Starting ToolSyncTonelist21mTo16m...");
+        logger.debug("[STARTUP] Log4j configuration loaded from {}", LOG4J.getAbsolutePath());
 
         SessionFactory target = null;
         SessionFactory source = null;
         Timer timer = null;
         try {
             SyncConfig config = getConfig();
+            logger.debug("[STARTUP] Configuration loaded: batchSize={}, delayMillis={}, periodMillis={}, serverWhitelist={}",
+                    config.getBatchSize(), config.getDelayTimeMillis(), config.getPeriodTimeMillis(), config.getServerIpWhitelist());
+            logger.debug("[STARTUP] File directories loaded: TEMP={}, WAV={}, TEMP_MUSIC={}, AMR={}",
+                    config.getTempDirectory(), config.getWavDirectory(), config.getTempMusicDirectory(),
+                    config.getAmrDirectory());
+
             target = DbHelper.buildSessionFactory(CONFIG_16M);
+            logger.debug("[STARTUP] CRBT16M target SessionFactory created");
+
             source = DbHelper.buildSessionFactory(CONFIG_21M);
+            logger.debug("[STARTUP] CRBT21M source SessionFactory created");
+
+            logger.debug("[STARTUP] Loading source schema copy plan");
             SchemaCopyPlan schemaCopyPlan = loadSchemaCopyPlan(source);
+            logger.debug("[STARTUP] Schema copy plan loaded: MAP_CP_RBT columns={}, TONELIST columns={}",
+                    schemaCopyPlan.getMapCpRbt().getColumns().size(), schemaCopyPlan.getTonelist().getColumns().size());
+
             timer = new Timer("tonelist-21m-to-16m-sync-timer");
             timer.schedule(new SyncTask(config, target, source, schemaCopyPlan), config.getDelayTimeMillis(), config.getPeriodTimeMillis());
+            logger.debug("[SCHEDULER] Task scheduled: initialDelayMillis={}, periodMillis={}",
+                    config.getDelayTimeMillis(), config.getPeriodTimeMillis());
             addShutdownHook(timer, target, source);
         } catch (Exception e) {
             if (timer != null) {
@@ -81,9 +97,11 @@ public final class SyncStart {
         Runtime.getRuntime().addShutdownHook(new Thread("crbt-sync-shutdown") {
             @Override
             public void run() {
+                logger.debug("[SHUTDOWN] Cancelling scheduler and closing database SessionFactories");
                 timer.cancel();
                 close(source);
                 close(target);
+                logger.debug("[SHUTDOWN] Resources closed");
             }
         });
     }
@@ -109,10 +127,18 @@ public final class SyncStart {
 
         @Override
         public void run() {
+            long startedAt = System.currentTimeMillis();
+            LogManager.getLogger(SyncStart.class).debug("[SCHEDULER] Synchronization task started");
             try {
-                new DatabaseSynchronizer().synchronize(target, source, config.getBatchSize(), new OffsetStore(OFFSET.toPath()), config.getServerIpWhitelist(), schemaCopyPlan);
+                new DatabaseSynchronizer(config.getTempDirectory(), config.getWavDirectory(),
+                        config.getTempMusicDirectory(), config.getAmrDirectory())
+                        .synchronize(target, source, config.getBatchSize(), new OffsetStore(OFFSET.toPath()),
+                                config.getServerIpWhitelist(), schemaCopyPlan);
             } catch (Exception exception) {
                 LogManager.getLogger(SyncStart.class).error("Synchronization task failed", exception);
+            } finally {
+                LogManager.getLogger(SyncStart.class).debug("[SCHEDULER] Synchronization task finished in {} ms",
+                        System.currentTimeMillis() - startedAt);
             }
         }
     }

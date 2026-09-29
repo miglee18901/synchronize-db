@@ -8,7 +8,7 @@ Công cụ Java đồng bộ dữ liệu nhạc chờ từ CRBT21M (nguồn) san
 - Apache Maven 3.8 trở lên
 - MySQL có hai schema CRBT21M và CRBT16M
 
-Tài khoản CRBT21M cần quyền đọc `RBT_LOG`, `MAP_CP_RBT`, `TONELIST`. Tài khoản CRBT16M cần quyền đọc/ghi `MAP_CP_RBT`, `TONELIST`, `TONELIST_SYNLOG`.
+Tài khoản CRBT21M cần quyền đọc `RBT_LOG`, `MAP_CP_RBT`, `TONELIST`. Tài khoản CRBT16M cần quyền đọc/ghi các bảng được đồng bộ/xóa, `RBT_DEL_ALL` và `TONELIST_SYNLOG`.
 
 ## Cấu hình
 
@@ -26,6 +26,10 @@ BATCH_SIZE=1000
 DELAY_TIME=1000
 PERIOD_TIME=300000
 SERVER_IP_WHITELIST=127.0.0.1,10.0.0.1
+TEMP=/u01/temp
+WAV=/u01/wav
+TEMP_MUSIC=/u01/mp3
+AMR=/u01/amr
 ```
 
 | Thuộc tính | Ý nghĩa |
@@ -34,6 +38,12 @@ SERVER_IP_WHITELIST=127.0.0.1,10.0.0.1
 | `DELAY_TIME` | Thời gian chờ trước lượt đầu tiên, đơn vị mili giây. |
 | `PERIOD_TIME` | Chu kỳ chạy, đơn vị mili giây. |
 | `SERVER_IP_WHITELIST` | Danh sách giá trị `RBT_LOG.SERVER`, phân cách bằng dấu phẩy. Giá trị rỗng không hợp lệ. |
+| `TEMP` | Thư mục chứa file WAV tạm cần xóa khi xử lý action 15. |
+| `WAV` | Thư mục chứa file WAV cần xóa khi xử lý action 15. |
+| `TEMP_MUSIC` | Thư mục chứa file MP3 cần xóa khi xử lý action 15. |
+| `AMR` | Thư mục chứa file AMR cần xóa khi xử lý action 15. |
+
+Nếu các cấu hình đường dẫn bị thiếu hoặc để trống, ứng dụng lần lượt sử dụng giá trị mặc định `/u01/temp`, `/u01/wav`, `/u01/mp3` và `/u01/amr`.
 
 `etc/offset.txt` lưu ID cuối cùng đã xử lý. Nếu file chưa tồn tại hoặc rỗng, offset bắt đầu từ `0`.
 
@@ -42,11 +52,12 @@ SERVER_IP_WHITELIST=127.0.0.1,10.0.0.1
 Ứng dụng truy vấn theo từng batch:
 
 ```sql
-SELECT ID, TONE_ID, TONE_CODE, ACTION_TYPE, SERVER
+SELECT ID, TONE_ID, TONE_CODE, ACTION_TYPE, FPATH,
+       TONE_NAME, SINGER, CP_CODE, ACTION_ACC, EXP_DATE, DESCRIPTION
 FROM RBT_LOG
 WHERE ID > :offset
   AND RESULT = 1
-  AND ACTION_TYPE IN (1, 3)
+  AND ACTION_TYPE IN (1, 3, 15)
   AND SERVER IN (:serverIpWhitelist)
 ORDER BY ID ASC
 ```
@@ -55,7 +66,8 @@ Với từng bản ghi:
 
 - `ACTION_TYPE = 3`: sao chép `MAP_CP_RBT`.
 - `ACTION_TYPE = 1`: sao chép `MAP_CP_RBT`, sau đó sao chép `TONELIST`.
-- Action khác `1` và `3` bị loại ngay khi đọc `RBT_LOG`; dữ liệu đã tồn tại ở đích được bỏ qua và vẫn được xem là xử lý thành công.
+- `ACTION_TYPE = 15`: insert yêu cầu vào `RBT_DEL_ALL`, sau đó xóa dữ liệu theo `TONE_CODE` (riêng `TONE_CATEGORY` theo `TONE_ID`) và xóa các file WAV/MP3/AMR được suy ra từ `RBT_LOG.FPATH`.
+- Action khác `1`, `3` và `15` bị loại ngay khi đọc `RBT_LOG`; dữ liệu đã tồn tại ở đích được bỏ qua và vẫn được xem là xử lý thành công.
 - Nếu thành công, insert `TONELIST_SYNLOG` với `DESCRIPTION = 'success'`, `STATE = 1`.
 - Nếu lỗi, rollback dữ liệu của bản ghi rồi insert `TONELIST_SYNLOG` với chi tiết lỗi, `STATE = 0`.
 

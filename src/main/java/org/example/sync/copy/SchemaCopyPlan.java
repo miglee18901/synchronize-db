@@ -1,5 +1,7 @@
 package org.example.sync.copy;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 
@@ -13,6 +15,7 @@ import java.util.Map;
 import java.util.TreeMap;
 
 public final class SchemaCopyPlan {
+    private static final Logger logger = LogManager.getLogger(SchemaCopyPlan.class);
     public static final String MAP_CP_RBT = "MAP_CP_RBT";
     public static final String TONELIST = "TONELIST";
 
@@ -25,12 +28,17 @@ public final class SchemaCopyPlan {
     }
 
     public static SchemaCopyPlan loadFromSource(SessionFactory sourceFactory) throws SQLException {
+        logger.debug("[SCHEMA] Opening source session to inspect copy-table columns");
         Session source = sourceFactory.openSession();
         try {
-            return new SchemaCopyPlan(loadTable(source.connection(), MAP_CP_RBT),
-                    loadTable(source.connection(), TONELIST));
+            TableCopyPlan mapCpRbt = loadTable(source.connection(), MAP_CP_RBT);
+            TableCopyPlan tonelist = loadTable(source.connection(), TONELIST);
+            logger.debug("[SCHEMA] Copy plan ready: MAP_CP_RBT columns={}, TONELIST columns={}",
+                    mapCpRbt.getColumns(), tonelist.getColumns());
+            return new SchemaCopyPlan(mapCpRbt, tonelist);
         } finally {
             source.close();
+            logger.debug("[SCHEMA] Source metadata session closed");
         }
     }
 
@@ -43,10 +51,12 @@ public final class SchemaCopyPlan {
     }
 
     private static TableCopyPlan loadTable(Connection source, String table) throws SQLException {
+        logger.debug("[SCHEMA] Loading columns for table {}", table);
         Map<String, String> sourceColumns = columns(source, table);
         if (sourceColumns.isEmpty()) {
             throw new SQLException("Unable to read columns for " + table);
         }
+        logger.debug("[SCHEMA] Loaded {} column(s) for table {}", sourceColumns.size(), table);
         return new TableCopyPlan(table, new ArrayList<>(sourceColumns.values()));
     }
 

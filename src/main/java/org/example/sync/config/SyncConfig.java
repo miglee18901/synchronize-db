@@ -3,6 +3,8 @@ package org.example.sync.config;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -13,12 +15,21 @@ public final class SyncConfig {
     private final long delayTimeMillis;
     private final long periodTimeMillis;
     private final List<String> serverIpWhitelist;
+    private final Path tempDirectory;
+    private final Path wavDirectory;
+    private final Path tempMusicDirectory;
+    private final Path amrDirectory;
 
-    private SyncConfig(int batchSize, long delayTimeMillis, long periodTimeMillis, List<String> serverIpWhitelist) {
+    private SyncConfig(int batchSize, long delayTimeMillis, long periodTimeMillis, List<String> serverIpWhitelist,
+                       Path tempDirectory, Path wavDirectory, Path tempMusicDirectory, Path amrDirectory) {
         this.batchSize = batchSize;
         this.delayTimeMillis = delayTimeMillis;
         this.periodTimeMillis = periodTimeMillis;
         this.serverIpWhitelist = Collections.unmodifiableList(new ArrayList<>(serverIpWhitelist));
+        this.tempDirectory = tempDirectory;
+        this.wavDirectory = wavDirectory;
+        this.tempMusicDirectory = tempMusicDirectory;
+        this.amrDirectory = amrDirectory;
     }
 
     public static SyncConfig load(File file) throws IOException {
@@ -67,7 +78,20 @@ public final class SyncConfig {
         if (serverIpWhitelist.isEmpty()) {
             throw new IllegalArgumentException("SERVER_IP_WHITELIST must contain at least one IP address");
         }
-        return new SyncConfig(batchSize, delayTimeMillis, periodTimeMillis, serverIpWhitelist);
+        Path tempDirectory = directory(properties, "TEMP", "/u01/temp");
+        Path wavDirectory = directory(properties, "WAV", "/u01/wav");
+        Path tempMusicDirectory = directory(properties, "TEMP_MUSIC", "/u01/mp3");
+        Path amrDirectory = directory(properties, "AMR", "/u01/amr");
+        return new SyncConfig(batchSize, delayTimeMillis, periodTimeMillis, serverIpWhitelist,
+                tempDirectory, wavDirectory, tempMusicDirectory, amrDirectory);
+    }
+
+    private static Path directory(Properties properties, String key, String defaultValue) {
+        String value = properties.getProperty(key, "").trim();
+        if (value.isEmpty()) {
+            value = defaultValue;
+        }
+        return Paths.get(value).toAbsolutePath().normalize();
     }
 
     public int getBatchSize() {
@@ -84,6 +108,22 @@ public final class SyncConfig {
 
     public List<String> getServerIpWhitelist() {
         return serverIpWhitelist;
+    }
+
+    public Path getTempDirectory() {
+        return tempDirectory;
+    }
+
+    public Path getWavDirectory() {
+        return wavDirectory;
+    }
+
+    public Path getTempMusicDirectory() {
+        return tempMusicDirectory;
+    }
+
+    public Path getAmrDirectory() {
+        return amrDirectory;
     }
 
 }

@@ -1,16 +1,34 @@
 package org.example.sync.model;
 
+import java.sql.Timestamp;
+
 public final class RBTLogInfo {
     private final long id;
     private final String toneId;
     private final String toneCode;
     private final int actionType;
+    private final String filePath;
+    private final String toneName;
+    private final String singer;
+    private final String cpCode;
+    private final String actionAccount;
+    private final Timestamp expirationDate;
+    private final String description;
 
-    public RBTLogInfo(long id, String toneId, String toneCode, int actionType) {
+    public RBTLogInfo(long id, String toneId, String toneCode, int actionType, String filePath,
+                      String toneName, String singer, String cpCode, String actionAccount,
+                      Timestamp expirationDate, String description) {
         this.id = id;
         this.toneId = toneId;
         this.toneCode = toneCode;
         this.actionType = actionType;
+        this.filePath = filePath;
+        this.toneName = toneName;
+        this.singer = singer;
+        this.cpCode = cpCode;
+        this.actionAccount = actionAccount;
+        this.expirationDate = expirationDate;
+        this.description = description;
     }
 
     public long getId() {
@@ -27,6 +45,34 @@ public final class RBTLogInfo {
 
     public int getActionType() {
         return actionType;
+    }
+
+    public String getFilePath() {
+        return filePath;
+    }
+
+    public String getToneName() {
+        return toneName;
+    }
+
+    public String getSinger() {
+        return singer;
+    }
+
+    public String getCpCode() {
+        return cpCode;
+    }
+
+    public String getActionAccount() {
+        return actionAccount;
+    }
+
+    public Timestamp getExpirationDate() {
+        return expirationDate;
+    }
+
+    public String getDescription() {
+        return description;
     }
 
 }
