@@ -5,7 +5,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.example.sync.config.SyncConfig;
 import org.example.sync.copy.SchemaCopyPlan;
-import org.example.utils.DbHelper;
+import org.example.sync.utils.DbHelper;
 import org.hibernate.SessionFactory;
 
 import java.io.File;
@@ -16,11 +16,11 @@ import java.util.TimerTask;
 public final class SyncStart {
     private static final Logger logger = LogManager.getLogger(SyncStart.class);
 
-    private static final File CONFIG = new File("etc/config.properties");
-    private static final File LOG4J = new File("etc/log4j2.xml");
-    private static final File OFFSET = new File("etc/offset.txt");
-    private static final File CONFIG_16M = new File("etc/hibernate_mysql_crbt16m.cfg.xml");
-    private static final File CONFIG_21M = new File("etc/hibernate_mysql_crbt21m.cfg.xml");
+    private static final File CONFIG = new File("../etc/config.properties");
+    private static final File LOG4J = new File("../etc/log4j2.xml");
+    private static final File OFFSET = new File("../etc/offset.txt");
+    private static final File CONFIG_16M = new File("../etc/hibernate_mysql_crbt16m.cfg.xml");
+    private static final File CONFIG_21M = new File("../etc/hibernate_mysql_crbt21m.cfg.xml");
     private static volatile SyncConfig syncConfig;
 
     private SyncStart() {

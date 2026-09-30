@@ -82,7 +82,7 @@ public class DatabaseSynchronizerTest {
     }
 
     @Test
-    public void action1SynchronizesMapThenToneListAndRollsBackBothOnError() throws Exception {
+    public void action1KeepsCommittedMapWhenToneListSynchronizationFails() throws Exception {
         insertBusinessRow(source, "MAP_CP_RBT", 1, "OK", "new-map", "2026-01-02 00:00:00");
         insertBusinessRow(source, "TONELIST", 1, "OK", "new-tone", "2026-01-02 00:00:00");
         insertBusinessRow(target, "MAP_CP_RBT", 10, "OK", "old-map", "2026-01-01 00:00:00");
@@ -98,7 +98,7 @@ public class DatabaseSynchronizerTest {
 
         assertEquals("new-map", value(target, "MAP_CP_RBT", "OK"));
         assertEquals("new-tone", value(target, "TONELIST", "OK"));
-        assertEquals("original-map", value(target, "MAP_CP_RBT", "ROLLBACK"));
+        assertEquals("changed-map", value(target, "MAP_CP_RBT", "ROLLBACK"));
         assertEquals(1, scalarInt(target, "SELECT COUNT(*) FROM TONELIST_SYNLOG WHERE STATE = 1"));
         assertEquals(1, scalarInt(target, "SELECT COUNT(*) FROM TONELIST_SYNLOG WHERE STATE = 0"));
     }
@@ -183,6 +183,29 @@ public class DatabaseSynchronizerTest {
                 + "AND CREATE_DATE IS NOT NULL AND EXP_DATE = TIMESTAMP '2027-01-01 00:00:00'"));
         assertEquals("success", scalarString(target, "SELECT DESCRIPTION FROM TONELIST_SYNLOG"));
         assertEquals(1, scalarInt(target, "SELECT STATE FROM TONELIST_SYNLOG"));
+    }
+
+    @Test
+    public void action15KeepsEarlierCommitsAndContinuesWhenDeleteFails() throws Exception {
+        insertBusinessRow(target, "MAP_CP_RBT", 1, "PARTIAL", "map", "2026-01-01 00:00:00");
+        insertBusinessRow(target, "TONELIST", 1, "PARTIAL", "tone", "2026-01-01 00:00:00");
+        for (String table : DELETE_TABLES) {
+            execute(target, "INSERT INTO " + table + " VALUES ('PARTIAL')");
+        }
+        insertLog(1, "PARTIAL", 15);
+        commitSetupData();
+        execute(target, "DROP TABLE TOP_MONTH");
+        target.connection().commit();
+
+        synchronize();
+
+        assertFalse(exists(target, "MAP_CP_RBT", "PARTIAL"));
+        assertFalse(exists(target, "TONELIST", "PARTIAL"));
+        assertFalse(exists(target, "SPECIAL_TONELIST", "PARTIAL"));
+        assertFalse(exists(target, "TOP_HOT", "PARTIAL"));
+        assertTrue(exists(target, "TOP_WEEK", "PARTIAL"));
+        assertEquals(1, scalarInt(target, "SELECT COUNT(*) FROM RBT_DEL_ALL WHERE TONE_CODE = 'PARTIAL'"));
+        assertEquals(1, scalarInt(target, "SELECT COUNT(*) FROM TONELIST_SYNLOG WHERE STATE = 0"));
     }
 
     private void synchronize() throws Exception {

@@ -69,7 +69,7 @@ Với từng bản ghi:
 - `ACTION_TYPE = 15`: insert yêu cầu vào `RBT_DEL_ALL`, sau đó xóa dữ liệu theo `TONE_CODE` (riêng `TONE_CATEGORY` theo `TONE_ID`) và xóa các file WAV/MP3/AMR được suy ra từ `RBT_LOG.FPATH`.
 - Action khác `1`, `3` và `15` bị loại ngay khi đọc `RBT_LOG`; dữ liệu đã tồn tại ở đích được bỏ qua và vẫn được xem là xử lý thành công.
 - Nếu thành công, insert `TONELIST_SYNLOG` với `DESCRIPTION = 'success'`, `STATE = 1`.
-- Nếu lỗi, rollback dữ liệu của bản ghi rồi insert `TONELIST_SYNLOG` với chi tiết lỗi, `STATE = 0`.
+- Mỗi thao tác insert/update/delete được commit ngay. Nếu lỗi, các thao tác đã commit được giữ nguyên, ứng dụng ghi `TONELIST_SYNLOG` với `STATE = 0` rồi tiếp tục bản ghi kế tiếp.
 
 `TONELIST_SYNLOG` nằm tại CRBT16M và cần các cột:
 

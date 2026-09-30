@@ -1,7 +1,5 @@
 package org.example.sync.model;
 
-import java.sql.Timestamp;
-
 public final class RBTLogInfo {
     private final long id;
     private final String toneId;
@@ -12,12 +10,12 @@ public final class RBTLogInfo {
     private final String singer;
     private final String cpCode;
     private final String actionAccount;
-    private final Timestamp expirationDate;
+    private final String expirationDate;
     private final String description;
 
     public RBTLogInfo(long id, String toneId, String toneCode, int actionType, String filePath,
                       String toneName, String singer, String cpCode, String actionAccount,
-                      Timestamp expirationDate, String description) {
+                      String expirationDate, String description) {
         this.id = id;
         this.toneId = toneId;
         this.toneCode = toneCode;
@@ -67,7 +65,7 @@ public final class RBTLogInfo {
         return actionAccount;
     }
 
-    public Timestamp getExpirationDate() {
+    public String getExpirationDate() {
         return expirationDate;
     }
 

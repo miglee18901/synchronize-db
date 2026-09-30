@@ -33,12 +33,14 @@ public final class DatabaseRowCopier {
                 if (destinationModDate == null && !existsByToneCode(destinationConnection, table, toneCode)) {
                     logger.debug("[TABLE_SYNC] Destination row missing; inserting: table={}, toneCode={}", table, toneCode);
                     insertRow(destinationConnection, plan, sourceRow);
+                    destinationConnection.commit();
                     logger.debug("[TABLE_SYNC] Insert completed: table={}, toneCode={}", table, toneCode);
                     return true;
                 }
                 if (sourceModDate != null && (destinationModDate == null || destinationModDate.before(sourceModDate))) {
                     logger.debug("[TABLE_SYNC] Source row is newer; updating: table={}, toneCode={}", table, toneCode);
                     updateRow(destinationConnection, plan, sourceRow, toneCode);
+                    destinationConnection.commit();
                     logger.debug("[TABLE_SYNC] Update completed: table={}, toneCode={}", table, toneCode);
                     return true;
                 }
@@ -62,6 +64,7 @@ public final class DatabaseRowCopier {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, value);
             int deleted = statement.executeUpdate();
+            connection.commit();
             logger.debug("[TABLE_DELETE] Completed: table={}, keyColumn={}, keyValue={}, deletedRows={}",
                     table, column, value, deleted);
             return deleted;

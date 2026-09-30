@@ -7,14 +7,13 @@ import org.example.sync.copy.SchemaCopyPlan;
 import org.example.sync.model.RBTLogInfo;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
-import org.hibernate.SQLQuery;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -59,8 +58,7 @@ public final class DatabaseSynchronizer {
         int scanned = 0;
         int copied = 0;
         int errors = 0;
-        logger.debug("[SYNC] Opening source and target sessions");
-        Session target = target16M.openSession();
+        logger.debug("[SYNC] Opening source session");
         Session source = source21M.openSession();
         try {
             List<RBTLogInfo> batch;
@@ -73,33 +71,38 @@ public final class DatabaseSynchronizer {
             }
             logger.debug("[SYNC] Processing {} record(s)", batch.size());
             for (RBTLogInfo record : batch) {
+                Session target = null;
                 scanned++;
                 lastId = record.getId();
                 long recordStartedAt = System.currentTimeMillis();
                 logger.debug("[RECORD] Start: logId={}, toneId={}, toneCode={}, actionType={}, filePath={}",
                         record.getId(), record.getToneId(), record.getToneCode(), record.getActionType(), record.getFilePath());
                 try {
+                    target = target16M.openSession();
                     int recordCopied = process(target, source, record, copyPlan);
-                    logger.debug("[RECORD] Business data processed: logId={}, affectedRows={}; committing transaction",
-                            record.getId(), recordCopied);
-                    target.connection().commit();
                     copied += recordCopied;
                     writeSyncLog(target16M, record, "success", 1);
                     logger.debug("[RECORD] Success: logId={}, affectedRows={}, durationMillis={}",
                             record.getId(), recordCopied, System.currentTimeMillis() - recordStartedAt);
                 } catch (Exception exception) {
                     errors++;
-                    logger.debug("[RECORD] Rolling back failed record: logId={}", record.getId());
-                    rollback(target.connection(), exception);
                     logger.error("Synchronization failed for RBT_LOG ID {} (toneCode={}, actionType={}): {}",
                             record.getId(), record.getToneCode(), record.getActionType(), exception.getMessage(), exception);
                     writeSyncLog(target16M, record, exception.getMessage(), 0);
+                } finally {
+                    if (target != null) {
+                        try {
+                            target.close();
+                        } catch (Exception exception) {
+                            logger.error("Unable to close target session for RBT_LOG ID {}: {}",
+                                    record.getId(), exception.getMessage(), exception);
+                        }
+                    }
                 }
             }
         } finally {
-            logger.debug("[SYNC] Closing source and target sessions");
+            logger.debug("[SYNC] Closing source session");
             source.close();
-            target.close();
         }
         logger.debug("[SYNC] Persisting offset {}", lastId);
         offsetStore.write(lastId);
@@ -111,20 +114,31 @@ public final class DatabaseSynchronizer {
         List<RBTLogInfo> records = new ArrayList<>();
         logger.debug("[BATCH] Querying RBT_LOG: offset={}, maxResults={}, serverCount={}",
                 offset, batchSize, serverIpWhitelist.size());
-        SQLQuery query = source.createSQLQuery("SELECT ID, TONE_ID, TONE_CODE, ACTION_TYPE, FPATH, "
+        StringBuilder sql = new StringBuilder("SELECT ID, TONE_ID, TONE_CODE, ACTION_TYPE, FPATH, "
                 + "TONE_NAME, SINGER, CP_CODE, ACTION_ACC, EXP_DATE, DESCRIPTION FROM RBT_LOG "
-                + "WHERE ID > :offset AND RESULT = 1 AND ACTION_TYPE IN (1, 3, 15) "
-                + "AND SERVER IN (:serverIpWhitelist) ORDER BY ID ASC");
-        query.setLong("offset", offset);
-        query.setParameterList("serverIpWhitelist", serverIpWhitelist);
-        query.setMaxResults(batchSize);
-        List<?> rows = query.list();
-        for (Object value : rows) {
-            Object[] row = (Object[]) value;
-            records.add(new RBTLogInfo(((Number) row[0]).longValue(), row[1].toString(),
-                    row[2] == null ? null : row[2].toString(), ((Number) row[3]).intValue(),
-                    stringValue(row[4]), stringValue(row[5]), stringValue(row[6]), stringValue(row[7]),
-                    stringValue(row[8]), row[9] == null ? null : (Timestamp) row[9], stringValue(row[10])));
+                + "WHERE ID > ? AND RESULT = 1 AND ACTION_TYPE IN (1, 3, 15) AND SERVER IN (");
+        for (int index = 0; index < serverIpWhitelist.size(); index++) {
+            if (index > 0) {
+                sql.append(", ");
+            }
+            sql.append('?');
+        }
+        sql.append(") ORDER BY ID ASC");
+        try (PreparedStatement statement = source.connection().prepareStatement(sql.toString())) {
+            statement.setLong(1, offset);
+            for (int index = 0; index < serverIpWhitelist.size(); index++) {
+                statement.setString(index + 2, serverIpWhitelist.get(index));
+            }
+            statement.setMaxRows(batchSize);
+            try (ResultSet row = statement.executeQuery()) {
+                while (row.next()) {
+                    records.add(new RBTLogInfo(Long.parseLong(row.getString("ID")), row.getString("TONE_ID"),
+                            row.getString("TONE_CODE"), Integer.parseInt(row.getString("ACTION_TYPE")),
+                            row.getString("FPATH"), row.getString("TONE_NAME"), row.getString("SINGER"),
+                            row.getString("CP_CODE"), row.getString("ACTION_ACC"), row.getString("EXP_DATE"),
+                            row.getString("DESCRIPTION")));
+                }
+            }
         }
         if (records.isEmpty()) {
             logger.debug("[BATCH] No eligible RBT_LOG records found after offset {}", offset);
@@ -135,44 +149,54 @@ public final class DatabaseSynchronizer {
         return records;
     }
 
-    private String stringValue(Object value) {
-        return value == null ? null : value.toString();
-    }
-
     private int process(Session target, Session source, RBTLogInfo record, SchemaCopyPlan copyPlan) throws SQLException {
         if (record.getToneCode() == null || record.getToneCode().trim().isEmpty()) {
             logger.debug("[RECORD] Validation failed: logId={} has empty TONE_CODE", record.getId());
             throw new SQLException("TONE_CODE is empty");
         }
-        if (record.getActionType() == 15) {
-            logger.debug("[RECORD] Action 15 selected: deleting toneCode={}, toneId={} from {} table(s)",
-                    record.getToneCode(), record.getToneId(), ACTION_15_DELETE_TABLES.length);
-            insertRbtDelAll(target, record);
-            int deleted = 0;
-            for (String table : ACTION_15_DELETE_TABLES) {
-                if (TONE_CATEGORY.equals(table)) {
-                    logger.debug("[RECORD] Deleting TONE_CATEGORY by toneId={}", record.getToneId());
-                    deleted += copier.deleteByToneId(target, table, record.getToneId());
-                } else {
-                    deleted += copier.deleteByToneCode(target, table, record.getToneCode());
-                }
-            }
-            deletedFileWav(record.getFilePath());
-            deletedFileMp3(record.getFilePath());
-            deletedFileAmr(record.getFilePath());
-            logger.debug("[RECORD] Action 15 completed: logId={}, deletedRows={}", record.getId(), deleted);
-            return deleted;
+        switch (record.getActionType()) {
+            case 1:
+                return synchronizeTone(target, source, record, copyPlan, true);
+            case 3:
+                return synchronizeTone(target, source, record, copyPlan, false);
+            case 15:
+                return deleteTone(target, record);
+            default:
+                throw new SQLException("Unsupported ACTION_TYPE: " + record.getActionType());
         }
+    }
 
+    private int synchronizeTone(Session target, Session source, RBTLogInfo record,
+                                SchemaCopyPlan copyPlan, boolean includeTonelist) throws SQLException {
         logger.debug("[RECORD] Synchronizing MAP_CP_RBT: logId={}, toneCode={}", record.getId(), record.getToneCode());
         int synchronizedRows = copier.synchronizeLatestByToneCode(source, target, copyPlan.getMapCpRbt(), record.getToneCode()) ? 1 : 0;
-        if (record.getActionType() == 1) {
+        if (includeTonelist) {
             logger.debug("[RECORD] Synchronizing TONELIST: logId={}, toneCode={}", record.getId(), record.getToneCode());
             if (copier.synchronizeLatestByToneCode(source, target, copyPlan.getTonelist(), record.getToneCode())) {
                 synchronizedRows++;
             }
         }
         return synchronizedRows;
+    }
+
+    private int deleteTone(Session target, RBTLogInfo record) throws SQLException {
+        logger.debug("[RECORD] Action 15 selected: deleting toneCode={}, toneId={} from {} table(s)",
+                record.getToneCode(), record.getToneId(), ACTION_15_DELETE_TABLES.length);
+        insertRbtDelAll(target, record);
+        int deleted = 0;
+        for (String table : ACTION_15_DELETE_TABLES) {
+            if (TONE_CATEGORY.equals(table)) {
+                logger.debug("[RECORD] Deleting TONE_CATEGORY by toneId={}", record.getToneId());
+                deleted += copier.deleteByToneId(target, table, record.getToneId());
+            } else {
+                deleted += copier.deleteByToneCode(target, table, record.getToneCode());
+            }
+        }
+        deletedFileWav(record.getFilePath());
+        deletedFileMp3(record.getFilePath());
+        deletedFileAmr(record.getFilePath());
+        logger.debug("[RECORD] Action 15 completed: logId={}, deletedRows={}", record.getId(), deleted);
+        return deleted;
     }
 
     private void insertRbtDelAll(Session target, RBTLogInfo record) throws SQLException {
@@ -191,11 +215,12 @@ public final class DatabaseSynchronizer {
             statement.setString(7, null);
             statement.setString(8, record.getActionAccount());
             statement.setTimestamp(9, new Timestamp(System.currentTimeMillis()));
-            statement.setTimestamp(10, record.getExpirationDate());
+            statement.setString(10, record.getExpirationDate());
             statement.setString(11, record.getDescription());
             if (statement.executeUpdate() != 1) {
                 throw new SQLException("Expected one inserted row in RBT_DEL_ALL");
             }
+            target.connection().commit();
         }
         logger.debug("[RBT_DEL_ALL] Delete request inserted: logId={}, toneId={}, toneCode={}",
                 record.getId(), record.getToneId(), record.getToneCode());
@@ -261,13 +286,6 @@ public final class DatabaseSynchronizer {
             logSession.connection().commit();
             logger.debug("[SYNC_LOG] TONELIST_SYNLOG committed: logId={}, state={}", record.getId(), state);
         } catch (Exception exception) {
-            if (logSession != null) {
-                try {
-                    rollback(logSession.connection(), exception);
-                } catch (Exception rollbackException) {
-                    exception.addSuppressed(rollbackException);
-                }
-            }
             logger.error("Unable to write TONELIST_SYNLOG for RBT_LOG ID {}: {}", record.getId(), exception.getMessage(), exception);
         } finally {
             if (logSession != null) {
@@ -291,15 +309,6 @@ public final class DatabaseSynchronizer {
             if (statement.executeUpdate() != 1) {
                 throw new SQLException("Expected one inserted row in TONELIST_SYNLOG");
             }
-        }
-    }
-
-    private void rollback(Connection connection, Exception originalException) {
-        try {
-            connection.rollback();
-            logger.debug("[TRANSACTION] Rollback completed");
-        } catch (SQLException rollbackException) {
-            originalException.addSuppressed(rollbackException);
         }
     }
 
