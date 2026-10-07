@@ -37,6 +37,12 @@ public final class DatabaseRowCopier {
                     logger.debug("[TABLE_SYNC] Insert completed: table={}, toneCode={}", table, toneCode);
                     return true;
                 }
+                if (sourceModDate != null && destinationModDate != null && destinationModDate.after(sourceModDate)) {
+                    throw new SQLException("CRBT16M." + table + " has newer MOD_DATE than CRBT21M: "
+                            + "toneCode=" + toneCode
+                            + ", crbt16mModDate=" + destinationModDate
+                            + ", crbt21mModDate=" + sourceModDate);
+                }
                 if (sourceModDate != null && (destinationModDate == null || destinationModDate.before(sourceModDate))) {
                     logger.debug("[TABLE_SYNC] Source row is newer; updating: table={}, toneCode={}", table, toneCode);
                     updateRow(destinationConnection, plan, sourceRow, toneCode);
