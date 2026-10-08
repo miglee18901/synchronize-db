@@ -26,10 +26,10 @@ BATCH_SIZE=1000
 DELAY_TIME=1000
 PERIOD_TIME=300000
 SERVER_IP_WHITELIST=127.0.0.1,10.0.0.1
-TEMP=/u01/temp
-WAV=/u01/wav
-TEMP_MUSIC=/u01/mp3
-AMR=/u01/amr
+TEMP=/u03/temp
+WAV=/u03/wav
+TEMP_MUSIC=/u03/mp3
+AMR=/u03/amr
 ```
 
 | Thuộc tính | Ý nghĩa |
@@ -43,7 +43,7 @@ AMR=/u01/amr
 | `TEMP_MUSIC` | Thư mục chứa file MP3 cần xóa khi xử lý action 15. |
 | `AMR` | Thư mục chứa file AMR cần xóa khi xử lý action 15. |
 
-Nếu các cấu hình đường dẫn bị thiếu hoặc để trống, ứng dụng lần lượt sử dụng giá trị mặc định `/u01/temp`, `/u01/wav`, `/u01/mp3` và `/u01/amr`.
+Nếu các cấu hình đường dẫn bị thiếu hoặc để trống, ứng dụng lần lượt sử dụng giá trị mặc định `/u03/temp`, `/u03/wav`, `/u03/mp3` và `/u03/amr`.
 
 `etc/offset.txt` lưu ID cuối cùng đã xử lý. Nếu file chưa tồn tại hoặc rỗng, offset bắt đầu từ `0`.
 
@@ -66,6 +66,7 @@ Với từng bản ghi:
 
 - `ACTION_TYPE = 3`: sao chép `MAP_CP_RBT`.
 - `ACTION_TYPE = 1`: sao chép `MAP_CP_RBT`, sau đó sao chép `TONELIST`.
+- Trước khi update một bản ghi đã tồn tại ở CRBT16M, ứng dụng so sánh `TONE_ID` giữa hai môi trường. Nếu khác nhau, ứng dụng không update và ghi log lỗi.
 - `ACTION_TYPE = 15`: insert yêu cầu vào `RBT_DEL_ALL`, sau đó xóa dữ liệu theo `TONE_CODE` (riêng `TONE_CATEGORY` theo `TONE_ID`) và xóa các file WAV/MP3/AMR được suy ra từ `RBT_LOG.FPATH`.
 - Action khác `1`, `3` và `15` bị loại ngay khi đọc `RBT_LOG`; dữ liệu đã tồn tại ở đích được bỏ qua và vẫn được xem là xử lý thành công.
 - Nếu thành công, insert `TONELIST_SYNLOG` với `DESCRIPTION = 'success'`, `STATE = 1`.

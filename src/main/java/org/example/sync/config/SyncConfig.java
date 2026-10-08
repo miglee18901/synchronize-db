@@ -78,10 +78,10 @@ public final class SyncConfig {
         if (serverIpWhitelist.isEmpty()) {
             throw new IllegalArgumentException("SERVER_IP_WHITELIST must contain at least one IP address");
         }
-        Path tempDirectory = directory(properties, "TEMP", "/u01/temp");
-        Path wavDirectory = directory(properties, "WAV", "/u01/wav");
-        Path tempMusicDirectory = directory(properties, "TEMP_MUSIC", "/u01/mp3");
-        Path amrDirectory = directory(properties, "AMR", "/u01/amr");
+        Path tempDirectory = directory(properties, "TEMP", "/u03/temp");
+        Path wavDirectory = directory(properties, "WAV", "/u03/wav");
+        Path tempMusicDirectory = directory(properties, "TEMP_MUSIC", "/u03/mp3");
+        Path amrDirectory = directory(properties, "AMR", "/u03/amr");
         return new SyncConfig(batchSize, delayTimeMillis, periodTimeMillis, serverIpWhitelist,
                 tempDirectory, wavDirectory, tempMusicDirectory, amrDirectory);
     }

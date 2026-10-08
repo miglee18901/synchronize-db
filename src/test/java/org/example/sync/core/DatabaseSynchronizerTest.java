@@ -64,7 +64,7 @@ public class DatabaseSynchronizerTest {
     public void action3InsertsMissingUpdatesOlderAndSkipsNewerMapRows() throws Exception {
         insertBusinessRow(source, "MAP_CP_RBT", 1, "NEW", "source", "2026-01-02 00:00:00");
         insertBusinessRow(source, "MAP_CP_RBT", 2, "OLDER_TARGET", "source", "2026-01-02 00:00:00");
-        insertBusinessRow(target, "MAP_CP_RBT", 20, "OLDER_TARGET", "target-old", "2026-01-01 00:00:00");
+        insertBusinessRow(target, "MAP_CP_RBT", 20, 2, "OLDER_TARGET", "target-old", "2026-01-01 00:00:00");
         insertBusinessRow(source, "MAP_CP_RBT", 3, "NEWER_TARGET", "source-old", "2026-01-01 00:00:00");
         insertBusinessRow(target, "MAP_CP_RBT", 30, "NEWER_TARGET", "target-new", "2026-01-03 00:00:00");
         insertLog(1, "NEW", 3);
@@ -85,11 +85,11 @@ public class DatabaseSynchronizerTest {
     public void action1KeepsCommittedMapWhenToneListSynchronizationFails() throws Exception {
         insertBusinessRow(source, "MAP_CP_RBT", 1, "OK", "new-map", "2026-01-02 00:00:00");
         insertBusinessRow(source, "TONELIST", 1, "OK", "new-tone", "2026-01-02 00:00:00");
-        insertBusinessRow(target, "MAP_CP_RBT", 10, "OK", "old-map", "2026-01-01 00:00:00");
-        insertBusinessRow(target, "TONELIST", 10, "OK", "old-tone", "2026-01-01 00:00:00");
+        insertBusinessRow(target, "MAP_CP_RBT", 10, 1, "OK", "old-map", "2026-01-01 00:00:00");
+        insertBusinessRow(target, "TONELIST", 10, 1, "OK", "old-tone", "2026-01-01 00:00:00");
 
         insertBusinessRow(source, "MAP_CP_RBT", 2, "ROLLBACK", "changed-map", "2026-01-02 00:00:00");
-        insertBusinessRow(target, "MAP_CP_RBT", 20, "ROLLBACK", "original-map", "2026-01-01 00:00:00");
+        insertBusinessRow(target, "MAP_CP_RBT", 20, 2, "ROLLBACK", "original-map", "2026-01-01 00:00:00");
         insertLog(1, "OK", 1);
         insertLog(2, "ROLLBACK", 1);
         commitSetupData();
@@ -117,6 +117,21 @@ public class DatabaseSynchronizerTest {
                 "SELECT DESCRIPTION FROM TONELIST_SYNLOG WHERE TONE_ID = 1001").contains("MAP_CP_RBT"));
         assertEquals("TONE_CODE is empty", scalarString(target,
                 "SELECT DESCRIPTION FROM TONELIST_SYNLOG WHERE TONE_ID = 1002"));
+    }
+
+    @Test
+    public void differentToneIdPreventsUpdateAndWritesFailureLog() throws Exception {
+        insertBusinessRow(source, "MAP_CP_RBT", 1, 1001, "MISMATCH", "source", "2026-01-02 00:00:00");
+        insertBusinessRow(target, "MAP_CP_RBT", 10, 9999, "MISMATCH", "target", "2026-01-01 00:00:00");
+        insertLog(1, "MISMATCH", 3);
+        commitSetupData();
+
+        synchronize();
+
+        assertEquals("target", value(target, "MAP_CP_RBT", "MISMATCH"));
+        assertEquals(1, scalarInt(target, "SELECT COUNT(*) FROM TONELIST_SYNLOG WHERE STATE = 0"));
+        assertTrue(scalarString(target, "SELECT DESCRIPTION FROM TONELIST_SYNLOG")
+                .contains("TONE_ID mismatch in MAP_CP_RBT"));
     }
 
     @Test
@@ -236,7 +251,12 @@ public class DatabaseSynchronizerTest {
 
     private void insertBusinessRow(Session session, String table, long id, String toneCode,
                                    String description, String modDate) throws Exception {
-        execute(session, "INSERT INTO " + table + " VALUES (" + id + ", '" + toneCode + "', '"
+        insertBusinessRow(session, table, id, id, toneCode, description, modDate);
+    }
+
+    private void insertBusinessRow(Session session, String table, long id, long toneId, String toneCode,
+                                   String description, String modDate) throws Exception {
+        execute(session, "INSERT INTO " + table + " VALUES (" + id + ", " + toneId + ", '" + toneCode + "', '"
                 + description + "', TIMESTAMP '" + modDate + "')");
     }
 
@@ -256,9 +276,9 @@ public class DatabaseSynchronizerTest {
                 + "TONE_CODE VARCHAR(50), ACTION_TYPE INT, RESULT INT, SERVER VARCHAR(50), FPATH VARCHAR(1000), "
                 + "TONE_NAME VARCHAR(100), SINGER VARCHAR(100), CP_CODE VARCHAR(20), ACTION_ACC VARCHAR(50), "
                 + "EXP_DATE TIMESTAMP, DESCRIPTION VARCHAR(1000))");
-        execute(session, "CREATE TABLE MAP_CP_RBT (ID BIGINT PRIMARY KEY, TONE_CODE VARCHAR(50) UNIQUE, "
+        execute(session, "CREATE TABLE MAP_CP_RBT (ID BIGINT PRIMARY KEY, TONE_ID BIGINT, TONE_CODE VARCHAR(50) UNIQUE, "
                 + "DESCRIPTION VARCHAR(100), MOD_DATE TIMESTAMP)");
-        execute(session, "CREATE TABLE TONELIST (ID BIGINT PRIMARY KEY, TONE_CODE VARCHAR(50) UNIQUE, "
+        execute(session, "CREATE TABLE TONELIST (ID BIGINT PRIMARY KEY, TONE_ID BIGINT, TONE_CODE VARCHAR(50) UNIQUE, "
                 + "DESCRIPTION VARCHAR(100), MOD_DATE TIMESTAMP)");
         for (String table : DELETE_TABLES) {
             execute(session, "CREATE TABLE " + table + " (TONE_CODE VARCHAR(50) PRIMARY KEY)");

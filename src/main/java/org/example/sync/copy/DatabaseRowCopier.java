@@ -10,6 +10,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.Objects;
 
 public final class DatabaseRowCopier {
     private static final Logger logger = LogManager.getLogger(DatabaseRowCopier.class);
@@ -44,6 +45,11 @@ public final class DatabaseRowCopier {
                             + ", crbt21mModDate=" + sourceModDate);
                 }
                 if (sourceModDate != null) {
+                    String sourceToneId = sourceRow.getString("TONE_ID");
+                    String destinationToneId = findToneId(destinationConnection, table, toneCode);
+                    if (!Objects.equals(sourceToneId, destinationToneId)) {
+                        throw new SQLException("TONE_ID mismatch in " + table + " for TONE_CODE " + toneCode + ": source=" + sourceToneId + ", destination=" + destinationToneId);
+                    }
                     logger.debug("[TABLE_SYNC] Source row is newer; updating: table={}, toneCode={}", table, toneCode);
                     updateRow(destinationConnection, plan, sourceRow, toneCode);
                     destinationConnection.commit();
@@ -83,6 +89,17 @@ public final class DatabaseRowCopier {
             statement.setString(1, toneCode);
             try (ResultSet result = statement.executeQuery()) {
                 return result.next() ? result.getTimestamp(1) : null;
+            }
+        }
+    }
+
+    private String findToneId(Connection connection, String table, String toneCode) throws SQLException {
+        String sql = "SELECT " + quoted(connection, "TONE_ID") + " FROM " + quotedTable(connection, table)
+                + " WHERE " + quoted(connection, "TONE_CODE") + " = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, toneCode);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getString(1) : null;
             }
         }
     }
